@@ -6,17 +6,16 @@ import { useGameStore } from "@/store/gameStore";
 import * as THREE from "three";
 
 export default function IntroDoorScene() {
-  const isInsideHouse = useGameStore((state) => state.isInsideHouse);
-  const isDoorOpening = useGameStore((state) => state.isDoorOpening);
+  const isInsideHouse = useGameStore((state) => state.entered);
+  const isDoorOpening = useGameStore((state) => state.doorOpening);
   const openDoor = useGameStore((state) => state.openDoor);
-  const enterHouse = useGameStore((state) => state.enterHouse);
+  const enterHouse = useGameStore((state) => state.enterHome);
 
   const { camera } = useThree();
 
   const doorHingeRef = useRef<THREE.Group>(null);
   const handleRef = useRef<THREE.Group>(null);
-  const handLeftRef = useRef<THREE.Group>(null);
-  const handRightRef = useRef<THREE.Group>(null);
+  const firefliesRef = useRef<THREE.Group>(null);
 
   const [hovered, setHovered] = useState(false);
 
@@ -34,51 +33,6 @@ export default function IntroDoorScene() {
   };
 
   useFrame((state, delta) => {
-    // 1. Hands follow mouse position smoothly at a specific depth
-    const pointer = state.pointer;
-    const viewport = state.viewport;
-
-    // Calculate mouse position relative to camera at Z depth of door (~4.0)
-    const zDepth = 1.2; // depth relative to camera position
-    const targetHandX = (pointer.x * viewport.width) / 2;
-    const targetHandY = (pointer.y * viewport.height) / 2 + 1.2;
-
-    if (handLeftRef.current && handRightRef.current) {
-      // Left hand follows mouse slightly offset
-      handLeftRef.current.position.x = THREE.MathUtils.lerp(
-        handLeftRef.current.position.x,
-        targetHandX - 0.2,
-        6 * delta
-      );
-      handLeftRef.current.position.y = THREE.MathUtils.lerp(
-        handLeftRef.current.position.y,
-        targetHandY - 0.1,
-        6 * delta
-      );
-      handLeftRef.current.position.z = THREE.MathUtils.lerp(
-        handLeftRef.current.position.z,
-        camera.position.z - zDepth,
-        6 * delta
-      );
-
-      // Right hand follows mouse
-      handRightRef.current.position.x = THREE.MathUtils.lerp(
-        handRightRef.current.position.x,
-        targetHandX + 0.15,
-        8 * delta
-      );
-      handRightRef.current.position.y = THREE.MathUtils.lerp(
-        handRightRef.current.position.y,
-        targetHandY - 0.05,
-        8 * delta
-      );
-      handRightRef.current.position.z = THREE.MathUtils.lerp(
-        handRightRef.current.position.z,
-        camera.position.z - zDepth,
-        8 * delta
-      );
-    }
-
     // 2. Door & Handle Rotation animations
     if (isDoorOpening) {
       // Step A: Rotate handle
@@ -117,83 +71,196 @@ export default function IntroDoorScene() {
         }
       }
     }
+
+    // 3. Animate fireflies
+    if (firefliesRef.current) {
+      const time = state.clock.getElapsedTime();
+      firefliesRef.current.children.forEach((child, i) => {
+        const speed = 0.4 + (i % 3) * 0.2;
+        child.position.y += Math.sin(time * speed + i) * 0.0015;
+        child.position.x += Math.cos(time * speed + i) * 0.0015;
+      });
+    }
   });
 
   if (isInsideHouse) return null;
 
   return (
     <group position={[0, 0, 0]}>
-      {/* 3D Hands - Follow the cursor */}
-      {/* 3D Left Arm & Hand - Reaching from bottom-left */}
-      <group ref={handLeftRef}>
-        {/* Palm */}
-        <mesh castShadow>
-          <boxGeometry args={[0.07, 0.02, 0.09]} />
-          <meshStandardMaterial color="#ebd4c1" roughness={0.6} />
-        </mesh>
-        {/* Sleeve/Forearm */}
-        <mesh castShadow position={[-0.05, -0.12, 0.28]} rotation={[0.4, -0.1, 0]}>
-          <cylinderGeometry args={[0.03, 0.04, 0.5, 8]} />
-          <meshStandardMaterial color="#475569" roughness={0.7} />
-        </mesh>
-      </group>
-
-      {/* 3D Right Arm & Hand - Reaching from bottom-right */}
-      <group ref={handRightRef}>
-        {/* Palm */}
-        <mesh castShadow>
-          <boxGeometry args={[0.07, 0.02, 0.09]} />
-          <meshStandardMaterial color="#ebd4c1" roughness={0.6} />
-        </mesh>
-        {/* Sleeve/Forearm */}
-        <mesh castShadow position={[0.05, -0.12, 0.28]} rotation={[0.4, 0.1, 0]}>
-          <cylinderGeometry args={[0.03, 0.04, 0.5, 8]} />
-          <meshStandardMaterial color="#475569" roughness={0.7} />
-        </mesh>
-      </group>
-
-      {/* Cozy Garden Grass Ground */}
+      {/* Cozy Garden Grass Ground (golden-hour lit lawn) */}
       <mesh receiveShadow rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 2.5]}>
-        <planeGeometry args={[12, 10]} />
-        <meshStandardMaterial color="#2d372e" roughness={0.95} />
+        <planeGeometry args={[14, 12]} />
+        <meshStandardMaterial color="#3a6b34" roughness={0.95} />
       </mesh>
 
-      {/* Stone Walkway leading to the door */}
-      <mesh receiveShadow rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.015, 2.5]}>
-        <planeGeometry args={[1.8, 6]} />
-        <meshStandardMaterial color="#64748b" roughness={0.8} />
-      </mesh>
+      {/* Cozy winding stepping stones walkway */}
+      <group>
+        <mesh receiveShadow rotation={[-Math.PI / 2, 0, 0.2]} position={[0, 0.015, 0.8]}>
+          <cylinderGeometry args={[0.34, 0.36, 0.03, 8]} />
+          <meshStandardMaterial color="#57534e" roughness={0.9} />
+        </mesh>
+        <mesh receiveShadow rotation={[-Math.PI / 2, 0, -0.1]} position={[-0.18, 0.015, 1.6]}>
+          <cylinderGeometry args={[0.3, 0.32, 0.03, 8]} />
+          <meshStandardMaterial color="#44403c" roughness={0.9} />
+        </mesh>
+        <mesh receiveShadow rotation={[-Math.PI / 2, 0, 0.3]} position={[0.12, 0.015, 2.4]}>
+          <cylinderGeometry args={[0.36, 0.38, 0.03, 8]} />
+          <meshStandardMaterial color="#57534e" roughness={0.9} />
+        </mesh>
+        <mesh receiveShadow rotation={[-Math.PI / 2, 0, -0.3]} position={[-0.12, 0.015, 3.2]}>
+          <cylinderGeometry args={[0.32, 0.34, 0.03, 8]} />
+          <meshStandardMaterial color="#44403c" roughness={0.9} />
+        </mesh>
+        <mesh receiveShadow rotation={[-Math.PI / 2, 0, 0.15]} position={[0.18, 0.015, 4.0]}>
+          <cylinderGeometry args={[0.3, 0.32, 0.03, 8]} />
+          <meshStandardMaterial color="#57534e" roughness={0.9} />
+        </mesh>
+      </group>
 
-      {/* Bright Warm Cozy Stone Wall Exterior */}
-      <mesh receiveShadow position={[-2.4, 1.25, 0]}>
-        <boxGeometry args={[3, 2.7, 0.2]} />
-        <meshStandardMaterial color="#e6e1d5" roughness={0.8} />
-      </mesh>
-      <mesh receiveShadow position={[2.4, 1.25, 0]}>
-        <boxGeometry args={[3, 2.7, 0.2]} />
-        <meshStandardMaterial color="#e6e1d5" roughness={0.8} />
-      </mesh>
-      <mesh receiveShadow position={[0, 2.5, 0]}>
-        <boxGeometry args={[1.8, 0.2, 0.2]} />
-        <meshStandardMaterial color="#e6e1d5" roughness={0.8} />
-      </mesh>
+      {/* Scattered grass blades/tufts */}
+      <group>
+        {Array.from({ length: 35 }).map((_, i) => {
+          const x = Math.sin(i * 12345.67) * 5.0 + (i % 2 === 0 ? 1.6 : -1.6);
+          const z = Math.cos(i * 98765.43) * 3.0 + 2.5;
+          const scale = 0.06 + Math.abs(Math.sin(i)) * 0.09;
+          return (
+            <group key={`grass-${i}`} position={[x, 0.02, z]}>
+              <mesh castShadow>
+                <coneGeometry args={[0.016, scale, 4]} />
+                <meshStandardMaterial color="#166534" roughness={0.9} />
+              </mesh>
+              <mesh position={[0.01, 0, -0.01]} rotation={[0.2, 0, 0.2]} castShadow>
+                <coneGeometry args={[0.01, scale * 0.8, 4]} />
+                <meshStandardMaterial color="#15803d" roughness={0.9} />
+              </mesh>
+            </group>
+          );
+        })}
+      </group>
+
+      {/* Floating fireflies */}
+      <group ref={firefliesRef}>
+        {Array.from({ length: 16 }).map((_, i) => {
+          const x = Math.sin(i * 5432.1) * 4.0;
+          const y = 0.2 + Math.abs(Math.cos(i * 999.9)) * 1.5;
+          const z = 0.8 + Math.abs(Math.sin(i * 777.7)) * 4.0;
+          return (
+            <mesh key={`firefly-${i}`} position={[x, y, z]}>
+              <sphereGeometry args={[0.016, 6, 6]} />
+              <meshBasicMaterial color="#a7f3d0" />
+            </mesh>
+          );
+        })}
+      </group>
+
+      {/* Cozy Cottage Walls - Horizontal Siding panels */}
+      <group position={[-2.4, 1.25, 0]}>
+        {Array.from({ length: 14 }).map((_, i) => (
+          <mesh key={`siding-l-${i}`} position={[0, -1.25 + i * 0.2, 0]} receiveShadow castShadow>
+            <boxGeometry args={[3.2, 0.18, 0.2]} />
+            <meshStandardMaterial color="#5a4533" roughness={0.8} />
+          </mesh>
+        ))}
+      </group>
+      <group position={[2.4, 1.25, 0]}>
+        {Array.from({ length: 14 }).map((_, i) => (
+          <mesh key={`siding-r-${i}`} position={[0, -1.25 + i * 0.2, 0]} receiveShadow castShadow>
+            <boxGeometry args={[3.2, 0.18, 0.2]} />
+            <meshStandardMaterial color="#5a4533" roughness={0.8} />
+          </mesh>
+        ))}
+      </group>
+      <group position={[0, 2.6, 0]}>
+        {Array.from({ length: 3 }).map((_, i) => (
+          <mesh key={`siding-t-${i}`} position={[0, -0.15 + i * 0.2, 0]} receiveShadow castShadow>
+            <boxGeometry args={[1.8, 0.18, 0.2]} />
+            <meshStandardMaterial color="#5a4533" roughness={0.8} />
+          </mesh>
+        ))}
+      </group>
+
+      {/* Windows with glowing warm yellow interior light */}
+      {/* Left Window */}
+      <group position={[-2.3, 1.3, 0.11]}>
+        {/* Frame */}
+        <mesh castShadow>
+          <boxGeometry args={[1.0, 1.2, 0.04]} />
+          <meshStandardMaterial color="#1e293b" roughness={0.5} />
+        </mesh>
+        {/* Glowing pane */}
+        <mesh position={[0, 0, 0.01]}>
+          <boxGeometry args={[0.9, 1.1, 0.02]} />
+          <meshBasicMaterial color="#fbbf24" />
+        </mesh>
+        {/* Window Cross Grid */}
+        <mesh position={[0, 0, 0.02]}>
+          <boxGeometry args={[0.04, 1.1, 0.02]} />
+          <meshStandardMaterial color="#0f172a" />
+        </mesh>
+        <mesh position={[0, 0, 0.02]}>
+          <boxGeometry args={[0.9, 0.04, 0.02]} />
+          <meshStandardMaterial color="#0f172a" />
+        </mesh>
+      </group>
+
+      {/* Right Window */}
+      <group position={[2.3, 1.3, 0.11]}>
+        {/* Frame */}
+        <mesh castShadow>
+          <boxGeometry args={[1.0, 1.2, 0.04]} />
+          <meshStandardMaterial color="#1e293b" roughness={0.5} />
+        </mesh>
+        {/* Glowing pane */}
+        <mesh position={[0, 0, 0.01]}>
+          <boxGeometry args={[0.9, 1.1, 0.02]} />
+          <meshBasicMaterial color="#fbbf24" />
+        </mesh>
+        {/* Window Cross Grid */}
+        <mesh position={[0, 0, 0.02]}>
+          <boxGeometry args={[0.04, 1.1, 0.02]} />
+          <meshStandardMaterial color="#0f172a" />
+        </mesh>
+        <mesh position={[0, 0, 0.02]}>
+          <boxGeometry args={[0.9, 0.04, 0.02]} />
+          <meshStandardMaterial color="#0f172a" />
+        </mesh>
+      </group>
+
+      {/* Timber Porch Awning */}
+      <group position={[0, 2.5, 0.45]} rotation={[0.15, 0, 0]}>
+        {/* Awning Roof */}
+        <mesh castShadow>
+          <boxGeometry args={[2.3, 0.04, 0.9]} />
+          <meshStandardMaterial color="#18181b" roughness={0.7} />
+        </mesh>
+        {/* Left Timber Support */}
+        <mesh position={[-1.05, -0.22, -0.4]} rotation={[0, 0, 0.25]}>
+          <boxGeometry args={[0.05, 0.45, 0.05]} />
+          <meshStandardMaterial color="#3f2f25" roughness={0.8} />
+        </mesh>
+        {/* Right Timber Support */}
+        <mesh position={[1.05, -0.22, -0.4]} rotation={[0, 0, -0.25]}>
+          <boxGeometry args={[0.05, 0.45, 0.05]} />
+          <meshStandardMaterial color="#3f2f25" roughness={0.8} />
+        </mesh>
+      </group>
 
       {/* Door Frame */}
       <group position={[0, 1.2, 0]}>
         {/* Left Frame column */}
         <mesh position={[-0.925, 0, 0.05]}>
           <boxGeometry args={[0.05, 2.4, 0.15]} />
-          <meshStandardMaterial color="#27272a" roughness={0.5} />
+          <meshStandardMaterial color="#18181b" roughness={0.5} />
         </mesh>
         {/* Right Frame column */}
         <mesh position={[0.925, 0, 0.05]}>
           <boxGeometry args={[0.05, 2.4, 0.15]} />
-          <meshStandardMaterial color="#27272a" roughness={0.5} />
+          <meshStandardMaterial color="#18181b" roughness={0.5} />
         </mesh>
         {/* Top Frame piece */}
         <mesh position={[0, 1.225, 0.05]}>
           <boxGeometry args={[1.9, 0.05, 0.15]} />
-          <meshStandardMaterial color="#27272a" roughness={0.5} />
+          <meshStandardMaterial color="#18181b" roughness={0.5} />
         </mesh>
       </group>
 
@@ -201,7 +268,7 @@ export default function IntroDoorScene() {
       {/* Pivot point is set on the left edge (x = -0.9) */}
       <group ref={doorHingeRef} position={[-0.9, 0, 0]}>
         <group position={[0.9, 1.2, 0]}>
-          {/* Golden Oak Wooden Door Panel */}
+          {/* Detailed Oak Wooden Door Panel */}
           <mesh
             castShadow
             receiveShadow
@@ -211,9 +278,47 @@ export default function IntroDoorScene() {
           >
             <boxGeometry args={[1.8, 2.4, 0.08]} />
             <meshStandardMaterial
-              color={hovered ? "#bd9368" : "#a77b55"}
-              roughness={0.6}
-              metalness={0.1}
+              color={hovered ? "#926848" : "#7c5335"}
+              roughness={0.7}
+              metalness={0.05}
+            />
+          </mesh>
+
+          {/* Decorative Door Panels */}
+          {/* Panel Top Left */}
+          <mesh position={[-0.35, 0.3, 0.042]} castShadow>
+            <boxGeometry args={[0.5, 0.45, 0.015]} />
+            <meshStandardMaterial color={hovered ? "#855d3f" : "#6f492e"} roughness={0.7} />
+          </mesh>
+          {/* Panel Top Right */}
+          <mesh position={[0.35, 0.3, 0.042]} castShadow>
+            <boxGeometry args={[0.5, 0.45, 0.015]} />
+            <meshStandardMaterial color={hovered ? "#855d3f" : "#6f492e"} roughness={0.7} />
+          </mesh>
+          {/* Panel Bottom Left */}
+          <mesh position={[-0.35, -0.45, 0.042]} castShadow>
+            <boxGeometry args={[0.5, 0.75, 0.015]} />
+            <meshStandardMaterial color={hovered ? "#855d3f" : "#6f492e"} roughness={0.7} />
+          </mesh>
+          {/* Panel Bottom Right */}
+          <mesh position={[0.35, -0.45, 0.042]} castShadow>
+            <boxGeometry args={[0.5, 0.75, 0.015]} />
+            <meshStandardMaterial color={hovered ? "#855d3f" : "#6f492e"} roughness={0.7} />
+          </mesh>
+
+          {/* Translucent Glowing Glass Window insert in door */}
+          <mesh position={[0, 0.82, 0]}>
+            <boxGeometry args={[1.1, 0.28, 0.09]} />
+            <meshStandardMaterial color="#1e293b" roughness={0.5} />
+          </mesh>
+          <mesh position={[0, 0.82, 0]}>
+            <boxGeometry args={[1.0, 0.2, 0.1]} />
+            <meshStandardMaterial 
+              color="#fef08a" 
+              emissive="#f59e0b" 
+              emissiveIntensity={0.8} 
+              transparent 
+              opacity={0.8} 
             />
           </mesh>
 
@@ -225,7 +330,7 @@ export default function IntroDoorScene() {
               <meshStandardMaterial
                 color="#e5c158"
                 metalness={0.9}
-                roughness={0.2}
+                roughness={0.15}
               />
             </mesh>
             {/* Handle Lever */}
@@ -238,7 +343,7 @@ export default function IntroDoorScene() {
               <meshStandardMaterial
                 color="#e5c158"
                 metalness={0.9}
-                roughness={0.2}
+                roughness={0.15}
               />
             </mesh>
           </group>
@@ -250,19 +355,46 @@ export default function IntroDoorScene() {
         {/* Light Box Mount */}
         <mesh castShadow>
           <boxGeometry args={[0.16, 0.06, 0.16]} />
-          <meshStandardMaterial color="#3f3f46" roughness={0.3} metalness={0.8} />
+          <meshStandardMaterial color="#1e293b" roughness={0.4} metalness={0.7} />
+        </mesh>
+        {/* Lantern support arm */}
+        <mesh position={[0, 0.08, -0.1]} rotation={[Math.PI / 2, 0, 0]}>
+          <cylinderGeometry args={[0.012, 0.012, 0.2, 8]} />
+          <meshStandardMaterial color="#1e293b" roughness={0.4} metalness={0.7} />
+        </mesh>
+        {/* Lantern glass cylinder */}
+        <mesh position={[0, -0.15, 0]}>
+          <cylinderGeometry args={[0.07, 0.07, 0.18, 8, 1, true]} />
+          <meshStandardMaterial color="#38bdf8" transparent opacity={0.2} roughness={0.1} metalness={0.9} />
+        </mesh>
+        {/* Lantern frame struts */}
+        <mesh position={[-0.07, -0.15, -0.07]}>
+          <boxGeometry args={[0.012, 0.18, 0.012]} />
+          <meshStandardMaterial color="#0f172a" roughness={0.4} />
+        </mesh>
+        <mesh position={[0.07, -0.15, -0.07]}>
+          <boxGeometry args={[0.012, 0.18, 0.012]} />
+          <meshStandardMaterial color="#0f172a" roughness={0.4} />
+        </mesh>
+        <mesh position={[-0.07, -0.15, 0.07]}>
+          <boxGeometry args={[0.012, 0.18, 0.012]} />
+          <meshStandardMaterial color="#0f172a" roughness={0.4} />
+        </mesh>
+        <mesh position={[0.07, -0.15, 0.07]}>
+          <boxGeometry args={[0.012, 0.18, 0.012]} />
+          <meshStandardMaterial color="#0f172a" roughness={0.4} />
         </mesh>
         {/* Glowing bulb */}
-        <mesh position={[0, -0.05, 0]}>
-          <sphereGeometry args={[0.045, 16, 16]} />
+        <mesh position={[0, -0.12, 0]}>
+          <sphereGeometry args={[0.035, 16, 16]} />
           <meshBasicMaterial color="#fef08a" />
         </mesh>
         {/* Warm Porch Light Source */}
         <pointLight
-          intensity={2.8}
+          intensity={3.2}
           color="#fef08a"
-          distance={8}
-          decay={2}
+          distance={10}
+          decay={1.8}
           castShadow
           shadow-mapSize-width={1024}
           shadow-mapSize-height={1024}

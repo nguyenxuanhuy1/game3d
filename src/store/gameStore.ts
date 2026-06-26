@@ -13,8 +13,14 @@ export interface GameState {
   entered: boolean;
   doorOpening: boolean;
 
+  /** All heavy 3D assets (models + textures) have finished preloading. */
+  assetsReady: boolean;
+
   /** Player is in the dedicated auto-shop wash bay (scene transition). */
   inWorkshop: boolean;
+
+  /** Which vehicle is loaded in the wash bay. */
+  vehicle: "scooter" | "car";
 
   /** Target time-of-day (DayCycle smoothly lerps toward this). */
   timeTarget: number;
@@ -30,6 +36,8 @@ export interface GameState {
   completed: string[];
 
   // Actions
+  setAssetsReady: (v: boolean) => void;
+  setVehicle: (v: "scooter" | "car") => void;
   openDoor: () => void;
   enterHome: () => void;
   enterWorkshop: () => void;
@@ -43,13 +51,27 @@ export interface GameState {
 export const useGameStore = create<GameState>((set) => ({
   entered: false,
   doorOpening: false,
+  assetsReady: false,
   inWorkshop: false,
+  vehicle: "scooter",
   timeTarget: MORNING,
   nearbyStationId: null,
   interactingId: null,
   progress: initialProgress,
   completed: [],
 
+  setAssetsReady: (v) => set((s) => (s.assetsReady === v ? {} : { assetsReady: v })),
+  setVehicle: (v) =>
+    set((s) =>
+      s.vehicle === v
+        ? {}
+        : {
+            vehicle: v,
+            // the freshly-loaded vehicle starts filthy again
+            progress: { ...s.progress, bike: 0 },
+            completed: s.completed.filter((id) => id !== "bike"),
+          }
+    ),
   openDoor: () => set({ doorOpening: true }),
   enterHome: () => set({ entered: true, doorOpening: false, timeTarget: MORNING }),
   enterWorkshop: () => set({ inWorkshop: true, interactingId: null }),

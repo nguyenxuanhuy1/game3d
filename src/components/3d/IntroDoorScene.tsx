@@ -8,6 +8,7 @@ import * as THREE from "three";
 export default function IntroDoorScene() {
   const isInsideHouse = useGameStore((state) => state.entered);
   const isDoorOpening = useGameStore((state) => state.doorOpening);
+  const assetsReady = useGameStore((state) => state.assetsReady);
   const openDoor = useGameStore((state) => state.openDoor);
   const enterHouse = useGameStore((state) => state.enterHome);
 
@@ -28,6 +29,7 @@ export default function IntroDoorScene() {
   // Handle pointer down / click to trigger the door opening animation
   const handleInteract = () => {
     if (isDoorOpening || isInsideHouse) return;
+    if (!assetsReady) return; // wait until the home has finished preloading
     openDoor();
     targetHandleRotation.current = Math.PI / 4; // Rotate handle down 45 degrees
   };

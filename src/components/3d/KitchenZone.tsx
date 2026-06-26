@@ -4,6 +4,9 @@ import React, { useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { useGameStore } from "@/store/gameStore";
+import Model, { M, preload } from "./Model";
+
+preload(M.kettle, M.stove, M.pan, M.pot, M.potEnamel, M.cabinet, M.plant4, M.coffeeCart);
 
 export default function KitchenZone() {
   const cupFillRef = useRef<THREE.Mesh>(null);
@@ -34,8 +37,7 @@ export default function KitchenZone() {
     steamRefs.current.forEach((m, i) => {
       if (!m) return;
       const frac = (t * 0.4 + i * 0.33) % 1;
-      // local coords (inside the coffee group, near the cup at local +z 0.18)
-      m.position.set(Math.sin(t * 1.5 + i) * 0.04, 0.07 + frac * 0.4, 0.18);
+      m.position.set(Math.sin(t * 1.5 + i) * 0.04, 0.07 + frac * 0.4, 0.0);
       m.scale.setScalar(steaming ? (1 - frac) * 0.05 : 0);
     });
 
@@ -46,11 +48,10 @@ export default function KitchenZone() {
       mat.emissiveIntensity = (cooking ? 2.2 : stove < 100 ? 0.8 : 0.3) + Math.sin(t * 8) * 0.2;
     }
     if (foodRef.current) {
-      foodRef.current.position.y = 0.965 + (cooking ? Math.abs(Math.sin(t * 6)) * 0.06 : 0);
+      foodRef.current.position.y = 0.045 + (cooking ? Math.abs(Math.sin(t * 6)) * 0.06 : 0);
       foodRef.current.rotation.y = t * (cooking ? 2 : 0.3);
     }
     if (foodMatRef.current) {
-      // raw pink -> cooked golden brown
       foodMatRef.current.color.set("#e7a17a").lerp(new THREE.Color("#7c4a1e"), stove / 100);
     }
     sizzleRefs.current.forEach((m, i) => {
@@ -69,7 +70,6 @@ export default function KitchenZone() {
     if (spongeRef.current) {
       spongeRef.current.visible = washing;
       if (washing) {
-        // scrub the top plate in little circles
         spongeRef.current.position.set(
           -0.02 + Math.cos(t * 9) * 0.06,
           0.075 + Math.abs(Math.sin(t * 9)) * 0.015,
@@ -105,7 +105,6 @@ export default function KitchenZone() {
           <boxGeometry args={[8.7, 0.06, 0.66]} />
           {counterTop}
         </mesh>
-        {/* cabinet door seams */}
         {Array.from({ length: 6 }).map((_, i) => (
           <mesh key={i} position={[-13.8 + i * 1.4, 0.45, -8.28]}>
             <boxGeometry args={[0.04, 0.7, 0.02]} />
@@ -129,70 +128,55 @@ export default function KitchenZone() {
         {counterTop}
       </mesh>
 
-      {/* ============ COFFEE STATION ============ */}
+      {/* tall pantry cabinet + a leafy plant for life */}
+      <Model url={M.cabinet} position={[-6.6, 0, -8.5]} rotation={[0, 0, 0]} />
+      <Model url={M.plant4} position={[-13.9, 0.95, -6.2]} scale={1.4} grounded={false} center />
+
+      {/* ============ COFFEE STATION — vintage kettle + filling cup ============ */}
       <group position={[-11.4, 0.95, -7.4]}>
-        {/* machine body */}
-        <mesh position={[0, 0.18, 0]} castShadow>
-          <boxGeometry args={[0.34, 0.36, 0.34]} />
-          <meshStandardMaterial color="#1f2937" roughness={0.3} metalness={0.6} />
-        </mesh>
-        <mesh position={[0, 0.4, 0]} castShadow>
-          <boxGeometry args={[0.3, 0.08, 0.3]} />
-          {steel}
-        </mesh>
-        {/* group head + spout */}
-        <mesh position={[0, 0.05, 0.16]}>
-          <cylinderGeometry args={[0.03, 0.02, 0.08, 12]} />
-          {steel}
-        </mesh>
+        <Model url={M.kettle} position={[-0.18, 0, 0]} rotation={[0, 0.5, 0]} />
         {/* cup */}
-        <group position={[0, 0, 0.18]}>
-          <mesh position={[0, 0.0, 0]} castShadow>
+        <group position={[0.16, 0, 0.04]}>
+          <mesh position={[0, 0.04, 0]} castShadow>
             <cylinderGeometry args={[0.05, 0.04, 0.08, 16]} />
             <meshStandardMaterial color="#faf5ec" roughness={0.3} />
           </mesh>
-          {/* coffee fill */}
-          <mesh ref={cupFillRef} position={[0, -0.03, 0]}>
+          <mesh ref={cupFillRef} position={[0, 0.01, 0]}>
             <cylinderGeometry args={[0.045, 0.035, 0.07, 16]} />
             <meshStandardMaterial color="#3b1d0e" roughness={0.2} emissive="#1a0c05" emissiveIntensity={0.2} />
           </mesh>
+          {/* steam */}
+          {Array.from({ length: 6 }).map((_, i) => (
+            <mesh key={i} ref={(el) => { if (el) steamRefs.current[i] = el; }}>
+              <sphereGeometry args={[1, 6, 6]} />
+              <meshBasicMaterial color="#ffffff" transparent opacity={0.5} />
+            </mesh>
+          ))}
         </group>
-        {/* steam */}
-        {Array.from({ length: 6 }).map((_, i) => (
-          <mesh key={i} ref={(el) => { if (el) steamRefs.current[i] = el; }}>
-            <sphereGeometry args={[1, 6, 6]} />
-            <meshBasicMaterial color="#ffffff" transparent opacity={0.5} />
-          </mesh>
-        ))}
       </group>
 
-      {/* ============ STOVE STATION ============ */}
+      {/* ============ STOVE STATION — hot plate + brass pan & pot ============ */}
       <group position={[-9.0, 0.95, -7.4]}>
-        {/* cooktop */}
-        <mesh position={[0, 0, 0]} castShadow>
-          <boxGeometry args={[0.7, 0.04, 0.55]} />
-          <meshStandardMaterial color="#222" roughness={0.4} metalness={0.5} />
+        {/* induction hot plate */}
+        <mesh position={[0, 0.02, 0]} castShadow>
+          <boxGeometry args={[0.7, 0.06, 0.5]} />
+          <meshStandardMaterial color="#1b1b1f" roughness={0.35} metalness={0.5} />
         </mesh>
         {/* glowing burner ring */}
-        <mesh ref={burnerRef} position={[0, 0.025, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <mesh ref={burnerRef} position={[-0.02, 0.052, 0]} rotation={[-Math.PI / 2, 0, 0]}>
           <ringGeometry args={[0.08, 0.16, 24]} />
           <meshStandardMaterial color="#ff5722" emissive="#ff4500" emissiveIntensity={0.8} side={THREE.DoubleSide} />
         </mesh>
-        <pointLight position={[0, 0.1, 0]} intensity={2} color="#ff6a2a" distance={1.6} decay={2} />
-        {/* pan */}
-        <mesh position={[0, 0.05, 0]} castShadow>
-          <cylinderGeometry args={[0.16, 0.14, 0.04, 24]} />
-          {steel}
-        </mesh>
-        <mesh position={[0.24, 0.06, 0]} rotation={[0, 0, Math.PI / 2]} castShadow>
-          <cylinderGeometry args={[0.018, 0.018, 0.24, 8]} />
-          <meshStandardMaterial color="#111" roughness={0.6} />
-        </mesh>
-        {/* food (egg/patty) */}
-        <mesh ref={foodRef} position={[0, 0.08, 0]} castShadow>
-          <sphereGeometry args={[0.07, 16, 12]} />
+        <pointLight position={[0, 0.12, 0]} intensity={2} color="#ff6a2a" distance={1.6} decay={2} />
+        {/* brass pan over the burner */}
+        <Model url={M.pan} position={[-0.02, 0.06, 0]} rotation={[0, Math.PI / 2, 0]} grounded={false} center />
+        {/* food (egg/patty) sizzling in the pan */}
+        <mesh ref={foodRef} position={[-0.02, 0.1, 0]} castShadow>
+          <sphereGeometry args={[0.055, 16, 12]} />
           <meshStandardMaterial ref={foodMatRef} color="#e7a17a" roughness={0.6} />
         </mesh>
+        {/* a brass pot resting beside it */}
+        <Model url={M.pot} position={[0.26, 0.06, -0.02]} scale={0.7} grounded={false} center />
         {/* sizzle */}
         {Array.from({ length: 8 }).map((_, i) => (
           <mesh key={i} ref={(el) => { if (el) sizzleRefs.current[i] = el; }}>
@@ -227,9 +211,11 @@ export default function KitchenZone() {
           <cylinderGeometry args={[0.008, 0.008, 0.28, 8]} />
           <meshStandardMaterial color="#bdecff" transparent opacity={0.6} emissive="#7dd3fc" emissiveIntensity={0.4} />
         </mesh>
-        {/* stacked plates (get shiny when clean) */}
+        {/* enamel pot draining on the side */}
+        <Model url={M.potEnamel} position={[0.3, 0.0, 0.22]} rotation={[0, 0.6, 0]} grounded={false} center />
+        {/* stacked plates (shine when clean) */}
         {[0, 1, 2].map((i) => (
-          <mesh key={i} position={[-0.02, 0.04 + i * 0.016, 0.08]} rotation={[0, 0, 0]}>
+          <mesh key={i} position={[-0.02, 0.04 + i * 0.016, 0.08]}>
             <cylinderGeometry args={[0.12 - i * 0.01, 0.12 - i * 0.01, 0.012, 24]} />
             <meshStandardMaterial
               ref={(m) => { if (m) plateMatRefs.current[i] = m; }}
@@ -241,7 +227,7 @@ export default function KitchenZone() {
             />
           </mesh>
         ))}
-        {/* scrub sponge (appears while washing up) */}
+        {/* scrub sponge */}
         <group ref={spongeRef} position={[-0.02, 0.075, 0.08]} visible={false}>
           <mesh castShadow>
             <boxGeometry args={[0.07, 0.03, 0.05]} />

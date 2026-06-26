@@ -3,6 +3,9 @@
 import React, { Suspense, lazy, useMemo } from "react";
 import { useTexture } from "@react-three/drei";
 import * as THREE from "three";
+import Model, { M, preload } from "./Model";
+
+preload(M.chandelier);
 
 // Each zone/station is its own lazy chunk so the whole world isn't bundled and
 // parsed up front — they stream in independently right after you step inside.
@@ -155,6 +158,10 @@ export default function HomeWorld() {
           daylight instead of a heavy orange wash. Sun shadows come from DayCycle. */}
       <pointLight position={[-10, 2.9, -3]} intensity={6} color="#ffe9cc" distance={11} decay={1.7} />
       <pointLight position={[0.5, 2.9, 0]} intensity={6.5} color="#ffead6" distance={14} decay={1.7} />
+
+      {/* ---- Chandelier hanging over the living room ---- */}
+      <Model url={M.chandelier} position={[0.5, 2.62, -3.2]} scale={0.01} grounded={false} center />
+      <pointLight position={[0.5, 2.3, -3.2]} intensity={4} color="#ffe2b0" distance={8} decay={1.8} />
 
       {/* ---------------- Zones (each loads as its own chunk) ---------------- */}
       <Suspense fallback={null}><KitchenZone /></Suspense>

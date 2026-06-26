@@ -6,6 +6,27 @@
   Source: https://poly.pizza/m/awXCP7LUcz6
   License: Creative Commons Attribution 3.0 (CC-BY 3.0)
            https://creativecommons.org/licenses/by/3.0/
+  Used as the parked motorbike / wash-bay bike (file: scooter.glb).
 
-Used in this project as the parked motorbike in the garden carport
-(src/components/3d/OutdoorZone.tsx, file: public/models/scooter.glb).
+"Ferrari 458 Italia" sports car (file: ferrari.glb)
+  From the three.js examples (examples/models/gltf/ferrari.glb),
+  https://github.com/mrdoob/three.js — re-packed to meshopt glb.
+  Used as the selectable "Siêu xe" in the wash bay.
+
+----------------------------------------------------------------------
+
+All other *.glb models in this folder are from Poly Haven
+(https://polyhaven.com) and are released under CC0 1.0 (public domain) —
+no attribution required. They were downloaded as glTF and re-packed into
+single-file, meshopt-compressed + webp .glb via @gltf-transform/cli.
+
+Models used (Poly Haven, CC0):
+  electric_stove, painted_wooden_cabinet, brass_pot_01, brass_pan_01,
+  vintage_electric_kettle, CoffeeCart_01, pot_enamel_01, sofa_03,
+  modern_coffee_table_01, mid_century_lounge_chair,
+  scandinavian_masonry_heater, wooden_bookshelf_worn, boombox,
+  concrete_cat_statue, throw_pillows_01, desk_lamp_arm_01, Chandelier_01,
+  ceramic_vase_01, potted_plant_01, potted_plant_02, potted_plant_04,
+  fern_02, watering_can_metal_01, planter_box_01, tree_stump_01,
+  wooden_axe_03, wooden_bucket_01, garden_hose_wall_mounted_01,
+  small_oil_can_01.

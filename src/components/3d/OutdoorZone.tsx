@@ -1,7 +1,7 @@
 "use client";
 
 import React, { Suspense, useMemo, useRef } from "react";
-import { useFrame, useThree } from "@react-three/fiber";
+import { useFrame } from "@react-three/fiber";
 import { Sparkles, Float, useGLTF } from "@react-three/drei";
 import * as THREE from "three";
 import { useGameStore } from "@/store/gameStore";
@@ -64,9 +64,6 @@ function ScooterModel() {
 useGLTF.preload(MODEL_URL);
 
 export default function OutdoorZone() {
-  const { camera } = useThree();
-  const addProgress = useGameStore((s) => s.addProgress);
-
   // ---- plant refs ----
   const plantRef = useRef<THREE.Group>(null);
   const soilMatRef = useRef<THREE.MeshStandardMaterial>(null);
@@ -80,15 +77,8 @@ export default function OutdoorZone() {
   const dripRefs = useRef<THREE.Mesh[]>([]);
   const splashRefs = useRef<THREE.Mesh[]>([]);
   const shineRef = useRef<THREE.Mesh>(null);
-  const dirt = useRef<number[]>(BIKE_GRIME.map(() => 1));
 
-  // scratch vectors (no per-frame allocation)
-  const tmp = useMemo(
-    () => ({ spot: new THREE.Vector3(), dir: new THREE.Vector3(), cam: new THREE.Vector3() }),
-    []
-  );
-
-  useFrame((state, delta) => {
+  useFrame((state) => {
     const t = state.clock.getElapsedTime();
     const { progress, interactingId } = useGameStore.getState();
     const plant = progress.plant ?? 0;
@@ -120,73 +110,20 @@ export default function OutdoorZone() {
       m.scale.setScalar(watering ? 0.022 : 0);
     });
 
-    // ============ BIKE: directional pressure wash ============
-    const washing = interactingId === "bike";
-    camera.getWorldDirection(tmp.dir);
-    tmp.cam.copy(camera.position);
-
-    let dirtSum = 0;
-    let hitIndex = -1;
+    // ============ BIKE: dirt just mirrors wash progress ============
+    // Washing happens in the dedicated workshop now; the parked bike simply
+    // shows how clean it currently is (blobs vanish in order as progress rises).
     for (let i = 0; i < BIKE_GRIME.length; i++) {
       const gm = grimeRefs.current[i];
-      const dr = dripRefs.current[i];
-      let inCone = false;
-
       if (gm) {
-        gm.getWorldPosition(tmp.spot);
-        tmp.spot.sub(tmp.cam);
-        const dist = tmp.spot.length();
-        tmp.spot.normalize();
-        const aim = tmp.spot.dot(tmp.dir);
-        inCone = washing && aim > 0.95 && dist < 7 && dirt.current[i] > 0.001;
-        if (inCone) {
-          dirt.current[i] = Math.max(0, dirt.current[i] - delta * 0.85);
-          hitIndex = i;
-        }
-        const d = dirt.current[i];
-        gm.visible = d > 0.02;
-        const s = 0.05 + d * 0.085;
-        gm.scale.set(s, s * 0.7, s);
-        (gm.material as THREE.MeshStandardMaterial).opacity = Math.min(1, d * 1.3);
+        gm.visible = bikeProg < ((i + 1) / BIKE_GRIME.length) * 100 - 4;
+        gm.scale.set(0.06, 0.042, 0.06);
+        (gm.material as THREE.MeshStandardMaterial).opacity = 1;
       }
-
-      // dirty water trickling down from the spot being rinsed
-      if (dr) {
-        if (inCone) {
-          dr.visible = true;
-          const base = BIKE_GRIME[i];
-          const frac = (t * 1.6 + i * 0.31) % 1;
-          dr.position.set(base[0], base[1] * (1 - frac) + 0.02, base[2] + 0.02);
-          dr.scale.set(0.018, 0.06 + frac * 0.12, 0.018);
-          (dr.material as THREE.MeshStandardMaterial).opacity = 0.75 * (1 - frac);
-        } else {
-          dr.visible = false;
-        }
-      }
-
-      dirtSum += dirt.current[i];
+      const dr = dripRefs.current[i];
+      if (dr) dr.visible = false;
     }
-
-    // Derive cleanliness → progress (only the spots you actually rinse count).
-    const cleanPct = (1 - dirtSum / BIKE_GRIME.length) * 100;
-    if (cleanPct > bikeProg + 0.15) addProgress("bike", cleanPct - bikeProg);
-
-    // Impact splash bursting off whichever spot is being hit.
-    splashRefs.current.forEach((m, i) => {
-      if (!m) return;
-      if (hitIndex >= 0) {
-        const base = BIKE_GRIME[hitIndex];
-        const frac = (t * 2.4 + i * 0.21) % 1;
-        m.position.set(
-          base[0] + Math.sin(i * 2.1) * 0.18 * frac,
-          base[1] + 0.04 - frac * base[1] * 0.6,
-          base[2] + Math.cos(i * 3.3) * 0.18 * frac + 0.04
-        );
-        m.scale.setScalar((1 - frac) * 0.045);
-      } else {
-        m.scale.setScalar(0);
-      }
-    });
+    splashRefs.current.forEach((m) => { if (m) m.scale.setScalar(0); });
 
     // Mirror-finish sweep once the bike is spotless.
     if (shineRef.current) {
@@ -201,6 +138,12 @@ export default function OutdoorZone() {
 
   return (
     <group>
+      {/* ---- Distant field bridging the garden to the panoramic horizon ---- */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[30, -0.05, 0]} receiveShadow>
+        <planeGeometry args={[140, 140]} />
+        <meshStandardMaterial color="#5d7d4a" roughness={1} metalness={0} />
+      </mesh>
+
       {/* ---- Grass ground ---- */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[10, 0.004, -1.5]} receiveShadow>
         <planeGeometry args={[8.2, 15.4]} />
@@ -345,8 +288,6 @@ export default function OutdoorZone() {
             <meshStandardMaterial color="#4a3526" roughness={0.8} />
           </mesh>
         ))}
-        <pointLight position={[0, 2.2, 0]} intensity={5} color="#ffd9a0" distance={6} decay={1.8} />
-
         {/* paving under bike */}
         <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.015, 0]} receiveShadow>
           <planeGeometry args={[2.8, 2.8]} />

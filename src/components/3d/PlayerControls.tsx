@@ -38,24 +38,45 @@ function collides(px: number, pz: number): boolean {
 
 export default function PlayerControls() {
   const entered = useGameStore((s) => s.entered);
+  const inWorkshop = useGameStore((s) => s.inWorkshop);
+  const enterWorkshop = useGameStore((s) => s.enterWorkshop);
   const setNearby = useGameStore((s) => s.setNearby);
   const setInteracting = useGameStore((s) => s.setInteracting);
   const addProgress = useGameStore((s) => s.addProgress);
 
   const controlsRef = useRef<any>(null);
   const [locked, setLocked] = useState(false);
+  const [isChoppingFocus, setIsChoppingFocus] = useState(false);
 
   const { camera } = useThree();
   const keys = useRef({ w: false, a: false, s: false, d: false });
   const holdE = useRef(false);
+  const prevHoldE = useRef(false);
   const holdMouse = useRef(false);
   const prevActing = useRef(false);
   const nearbyRef = useRef<string | null>(null);
+
+  // Camera shake state
+  const shakeIntensity = useRef(0);
+  const shakeEndTime = useRef(0);
+  const prevShake = useRef(new THREE.Vector3());
+
+  useEffect(() => {
+    if (!entered) return;
+    const onShake = (e: Event) => {
+      const detail = (e as CustomEvent).detail || {};
+      shakeIntensity.current = detail.intensity ?? 0.1;
+      shakeEndTime.current = performance.now() + (detail.duration ?? 200);
+    };
+    window.addEventListener("camera-shake", onShake);
+    return () => window.removeEventListener("camera-shake", onShake);
+  }, [entered]);
 
   // Spawn just inside the front door when entering.
   useEffect(() => {
     if (entered) {
       camera.position.set(0, 1.65, 4.2);
+      prevShake.current.set(0, 0, 0);
     }
   }, [entered, camera]);
 
@@ -103,7 +124,11 @@ export default function PlayerControls() {
   useEffect(() => {
     if (!entered) return;
     const onLock = () => setLocked(true);
-    const onUnlock = () => setLocked(false);
+    const onUnlock = () => {
+      setLocked(false);
+      setIsChoppingFocus(false);
+      setInteracting(null);
+    };
     const timer = setTimeout(() => {
       const c = controlsRef.current;
       if (c) {
@@ -123,9 +148,14 @@ export default function PlayerControls() {
 
   useFrame((_, delta) => {
     if (!entered) return;
+    // Hand control over to the workshop scene while washing.
+    if (inWorkshop) return;
+
+    // Restore true position by removing previous frame's shake offset
+    camera.position.sub(prevShake.current);
 
     // ---- Movement ----
-    if (locked) {
+    if (locked && !isChoppingFocus) {
       const speed = 3.4;
       const dir = new THREE.Vector3();
       camera.getWorldDirection(dir);
@@ -148,7 +178,10 @@ export default function PlayerControls() {
         if (!collides(camera.position.x, nz)) camera.position.z = nz;
       }
     }
-    camera.position.y = 1.65;
+    
+    if (!isChoppingFocus) {
+      camera.position.y = 1.65;
+    }
 
     // ---- Nearest interactable station ----
     let best: string | null = null;
@@ -167,29 +200,73 @@ export default function PlayerControls() {
       setNearby(best);
     }
 
-    // ---- Interaction ----
-    const acting = locked && (holdE.current || holdMouse.current);
+    // ---- Interaction & Chopping Focus ----
     const station = best ? STATION_MAP[best] : null;
+    const acting = locked && (holdE.current || holdMouse.current);
 
-    if (acting && station) {
-      setInteracting(station.id);
-      // The bike wash is driven by OutdoorZone instead — progress only rises
-      // for the grime spots the player actually aims the hose at.
-      if (station.id !== "bike") {
-        if (station.kind === "hold") {
-          addProgress(station.id, station.step * delta);
-        } else if (!prevActing.current) {
-          // tap: one shot on the rising edge
-          addProgress(station.id, station.step);
-        }
+    if (isChoppingFocus) {
+      // Smoothly move camera to target close-up position relative to the block at [8.0, 0, 4.0]
+      const targetPos = new THREE.Vector3(8.0, 1.45, 4.8);
+      camera.position.lerp(targetPos, 0.12);
+
+      // Smoothly slerp camera rotation to look down at the block
+      const targetLook = new THREE.Vector3(8.0, 0.65, 4.0);
+      const targetM4 = new THREE.Matrix4().lookAt(camera.position, targetLook, new THREE.Vector3(0, 1, 0));
+      const targetQuat = new THREE.Quaternion().setFromRotationMatrix(targetM4);
+      camera.quaternion.slerp(targetQuat, 0.12);
+
+      // Exit focus mode if E is pressed (raising edge)
+      if (holdE.current && !prevHoldE.current) {
+        setIsChoppingFocus(false);
+        setInteracting(null);
       }
     } else {
-      setInteracting(null);
+      // Normal walking interaction
+      if (acting && station) {
+        if (station.id === "firewood") {
+          // Toggle focused mode on click/E
+          if (!prevActing.current) {
+            setIsChoppingFocus(true);
+            setInteracting("firewood");
+          }
+        } else if (station.id === "bike") {
+          // Step into the dedicated wash bay on click/E.
+          if (!prevActing.current) {
+            enterWorkshop();
+          }
+        } else {
+          setInteracting(station.id);
+          if (station.kind === "hold") {
+            addProgress(station.id, station.step * delta);
+          } else if (!prevActing.current) {
+            addProgress(station.id, station.step);
+          }
+        }
+      } else {
+        setInteracting(null);
+      }
     }
+
+    // Apply camera shake offset
+    const now = performance.now();
+    let shakeX = 0;
+    let shakeY = 0;
+    let shakeZ = 0;
+    if (now < shakeEndTime.current) {
+      const remaining = Math.max(0, (shakeEndTime.current - now) / 200);
+      const amp = shakeIntensity.current * remaining;
+      shakeX = (Math.random() - 0.5) * amp;
+      shakeY = (Math.random() - 0.5) * amp;
+      shakeZ = (Math.random() - 0.5) * amp;
+    }
+    prevShake.current.set(shakeX, shakeY, shakeZ);
+    camera.position.add(prevShake.current);
+
     prevActing.current = acting;
+    prevHoldE.current = holdE.current;
   });
 
-  if (!entered) return null;
+  if (!entered || inWorkshop) return null;
 
   return (
     <>

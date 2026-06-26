@@ -2,11 +2,12 @@
 
 import React, { useEffect, useState } from "react";
 import { Canvas } from "@react-three/fiber";
-import { Environment, Lightformer } from "@react-three/drei";
+import { Environment } from "@react-three/drei";
 import { EffectComposer, Bloom, Vignette, ToneMapping } from "@react-three/postprocessing";
 import { ToneMappingMode } from "postprocessing";
 import * as THREE from "three";
 import DayCycle from "./DayCycle";
+import { useGameStore } from "@/store/gameStore";
 
 interface CanvasContainerProps {
   children: React.ReactNode;
@@ -14,6 +15,7 @@ interface CanvasContainerProps {
 
 export default function CanvasContainer({ children }: CanvasContainerProps) {
   const [mounted, setMounted] = useState(false);
+  const inWorkshop = useGameStore((s) => s.inWorkshop);
 
   useEffect(() => {
     setMounted(true);
@@ -36,9 +38,9 @@ export default function CanvasContainer({ children }: CanvasContainerProps) {
     <div className="w-full h-full absolute inset-0 overflow-hidden bg-[#160f17]">
       <Canvas
         flat
-        // Cap the resolution so 4K / retina screens don't melt the GPU, and let
-        // R3F drop quality before it ever drops frames.
-        dpr={[1, 1.75]}
+        // Cap resolution lower so high-DPI screens stay smooth, and let R3F drop
+        // quality before it ever drops frames.
+        dpr={[1, 1.4]}
         performance={{ min: 0.5 }}
         shadows={{ type: THREE.PCFShadowMap }}
         // antialias is handled by the EffectComposer (multisampling) below, so we
@@ -49,21 +51,31 @@ export default function CanvasContainer({ children }: CanvasContainerProps) {
         {/* Sky colour, fog and sun/ambient all driven by the time-of-day cycle */}
         <DayCycle />
 
-        {/* Self-contained warm studio IBL so metal / wet / glossy surfaces reflect
-            believable golden light without any external HDR download. */}
-        <Environment resolution={128} frames={1} background={false}>
-          <Lightformer form="rect" intensity={2.2} color="#ffb066" position={[6, 7, 6]} scale={[10, 10, 1]} target={[0, 0, 0]} />
-          <Lightformer form="rect" intensity={0.9} color="#8aa0d8" position={[-8, 4, -5]} scale={[7, 7, 1]} target={[0, 0, 0]} />
-          <Lightformer form="rect" intensity={0.7} color="#c98a5a" rotation={[Math.PI / 2, 0, 0]} position={[0, -3, 0]} scale={[14, 14, 1]} />
-          <Lightformer form="ring" intensity={1.1} color="#ffe0b0" position={[0, 9, 0]} scale={[6, 6, 1]} target={[0, 0, 0]} />
-        </Environment>
+        {/* Real 360° outdoor panorama (CC0 Poly Haven "qwantani_noon"): green
+            fields, rolling hills and a clouded blue sky. It's both the sky you
+            see beyond the fence AND the image-based lighting, so reflections and
+            ambient match the real environment. A touch of blur keeps it reading
+            as distant scenery rather than a flat photo. */}
+        {/* Garden uses the sky panorama; the wash bay swaps to a real auto-shop
+            interior (both CC0 Poly Haven HDRIs) — that real 360° shop *is* the
+            workshop backdrop, no box-room needed. */}
+        <Environment
+          key={inWorkshop ? "shop" : "sky"}
+          files={inWorkshop ? "/hdris/autoshop_01_1k.hdr" : "/hdris/qwantani_noon_1k.hdr"}
+          background
+          backgroundBlurriness={inWorkshop ? 0.02 : 0.05}
+          backgroundIntensity={inWorkshop ? 1.1 : 1.0}
+          environmentIntensity={inWorkshop ? 1.0 : 0.7}
+        />
 
         {children}
 
-        <EffectComposer multisampling={4}>
-          <Bloom mipmapBlur intensity={0.7} luminanceThreshold={0.68} luminanceSmoothing={0.25} />
+        {/* Lighter post stack: 2× MSAA (down from 4×) + a single gentle bloom.
+            Cheapest path that still anti-aliases the many box edges. */}
+        <EffectComposer multisampling={2}>
+          <Bloom mipmapBlur intensity={0.32} luminanceThreshold={0.9} luminanceSmoothing={0.2} />
           <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
-          <Vignette offset={0.3} darkness={0.55} eskil={false} />
+          <Vignette offset={0.32} darkness={0.42} eskil={false} />
         </EffectComposer>
       </Canvas>
     </div>

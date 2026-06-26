@@ -148,12 +148,6 @@ export default function LivingZone() {
         </mesh>
       </group>
 
-      {/* Round rug */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0.6, 0.02, -4.4]} receiveShadow>
-        <cylinderGeometry args={[2.0, 2.0, 0.02, 40]} />
-        <meshStandardMaterial color="#8a4a2a" roughness={0.95} />
-      </mesh>
-
       {/* Coffee table */}
       <group position={[0.6, 0, -4.6]}>
         <mesh position={[0, 0.32, 0]} castShadow>

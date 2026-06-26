@@ -70,10 +70,10 @@ export default function DayCycle() {
   );
 
   useEffect(() => {
-    scene.background = tmp.bg;
+    // The sky/background comes from the HDRI environment now; here we only own
+    // the distance fog so far scenery hazes into the horizon naturally.
     scene.fog = new THREE.Fog(tmp.fog, 16, 72);
     return () => {
-      scene.background = null;
       scene.fog = null;
     };
   }, [scene, tmp]);
@@ -140,8 +140,8 @@ export default function DayCycle() {
         intensity={2.3}
         castShadow
         shadow-bias={-0.0003}
-        shadow-mapSize-width={2048}
-        shadow-mapSize-height={2048}
+        shadow-mapSize-width={1024}
+        shadow-mapSize-height={1024}
         shadow-camera-near={0.5}
         shadow-camera-far={70}
         shadow-camera-left={-20}

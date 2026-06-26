@@ -16,6 +16,7 @@ if (typeof window !== "undefined") {
 }
 
 import { Suspense, lazy } from "react";
+import { Html } from "@react-three/drei";
 import CanvasContainer from "@/components/3d/CanvasContainer";
 import IntroDoorScene from "@/components/3d/IntroDoorScene";
 import PlayerControls from "@/components/3d/PlayerControls";
@@ -26,27 +27,51 @@ import { STATIONS, STATION_MAP } from "@/components/3d/stations";
 // through the door, so the landing/door scene stays light and fast.
 const HomeWorld = lazy(() => import("@/components/3d/HomeWorld"));
 const SprayHose = lazy(() => import("@/components/3d/SprayHose"));
+// The wash bay is its own chunk — only fetched the first time you wash the bike.
+const Workshop = lazy(() => import("@/components/3d/Workshop"));
 
 export default function Home() {
   const entered = useGameStore((s) => s.entered);
   const doorOpening = useGameStore((s) => s.doorOpening);
+  const inWorkshop = useGameStore((s) => s.inWorkshop);
+  const exitWorkshop = useGameStore((s) => s.exitWorkshop);
   const nearbyId = useGameStore((s) => s.nearbyStationId);
   const progress = useGameStore((s) => s.progress);
   const completed = useGameStore((s) => s.completed);
+  const interactingId = useGameStore((s) => s.interactingId);
 
   const allDone = completed.length >= STATIONS.length;
+  const bikeProgress = Math.round(progress.bike ?? 0);
   const nearby = nearbyId ? STATION_MAP[nearbyId] : null;
   const nearbyProgress = nearbyId ? Math.round(progress[nearbyId] ?? 0) : 0;
   const done = nearbyProgress >= 100;
+  const isChoppingFocus = interactingId === "firewood";
 
   return (
     <main className="relative w-full h-full min-h-screen">
       <CanvasContainer>
-        <IntroDoorScene />
+        {!inWorkshop && <IntroDoorScene />}
+        {/* Home world: its own chunk, loaded when you step inside. */}
         <Suspense fallback={null}>
-          {entered && <HomeWorld />}
-          {entered && <SprayHose />}
+          {entered && !inWorkshop && <HomeWorld />}
+          {entered && !inWorkshop && <SprayHose />}
         </Suspense>
+        {/* Wash bay: a completely separate chunk + assets, fetched only the
+            first time you enter it. A loader shows while it streams in. */}
+        {entered && inWorkshop && (
+          <Suspense
+            fallback={
+              <Html fullscreen>
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-[#15110d] text-amber-100/80">
+                  <div className="w-10 h-10 border-4 border-amber-900/40 border-t-amber-400 rounded-full animate-spin" />
+                  <p className="text-sm tracking-widest uppercase font-light">Đang vào xưởng rửa xe…</p>
+                </div>
+              </Html>
+            }
+          >
+            <Workshop />
+          </Suspense>
+        )}
         <PlayerControls />
       </CanvasContainer>
 
@@ -70,15 +95,30 @@ export default function Home() {
       )}
 
       {/* ---------- IN-HOME (minimal) ---------- */}
-      {entered && (
+      {entered && !inWorkshop && (
         <>
           {/* center reticle — grows slightly when something is in reach */}
-          <div className="absolute inset-0 z-10 grid place-items-center pointer-events-none">
-            <div
-              className="w-1.5 h-1.5 rounded-full bg-white/80 ring-1 ring-black/40 transition-transform duration-200"
-              style={{ transform: nearby ? "scale(1.8)" : "scale(1)" }}
-            />
-          </div>
+          {!isChoppingFocus && (
+            <div className="absolute inset-0 z-10 grid place-items-center pointer-events-none">
+              <div
+                className="w-1.5 h-1.5 rounded-full bg-white/80 ring-1 ring-black/40 transition-transform duration-200"
+                style={{ transform: nearby ? "scale(1.8)" : "scale(1)" }}
+              />
+            </div>
+          )}
+
+          {/* focused chopping instructions */}
+          {isChoppingFocus && (
+            <div className="absolute bottom-16 left-1/2 -translate-x-1/2 z-10 pointer-events-none select-none px-6 py-3.5 rounded-full bg-black/55 border border-amber-500/25 backdrop-blur-2xl flex flex-col items-center gap-1">
+              <div className="flex items-center gap-2.5 text-amber-100/90 font-medium">
+                <span className="text-base">🪓</span>
+                <span className="text-[13px] tracking-wide uppercase">Chế độ chẻ củi</span>
+              </div>
+              <span className="text-[11px] text-white/60 tracking-wider">
+                Nhấp chuột / Spacebar để CHẶT · Nhấn E để THOÁT
+              </span>
+            </div>
+          )}
 
           {/* contextual prompt — only when near an activity */}
           <div className="absolute bottom-12 left-1/2 -translate-x-1/2 z-10 pointer-events-none select-none">
@@ -88,13 +128,21 @@ export default function Home() {
                   Một ngày trọn vẹn 🌙
                 </span>
               </div>
-            ) : nearby ? (
+            ) : nearby && !isChoppingFocus ? (
               <div className="flex flex-col items-center gap-2.5">
                 <div className="flex items-center gap-2.5 px-4 py-2 rounded-full bg-black/35 border border-white/10 backdrop-blur-xl">
                   <span className="text-lg leading-none">{nearby.icon}</span>
                   <span className="text-[13px] font-medium text-white/90">{nearby.label}</span>
                   <span className="text-[10px] text-white/40 tracking-wide">
-                    {done ? "✓" : nearby.kind === "hold" ? "giữ chuột" : "nhấn chuột"}
+                    {done
+                      ? "✓"
+                      : nearby.id === "firewood"
+                      ? "nhấp/E để vào"
+                      : nearby.id === "bike"
+                      ? "nhấp/E để vào xưởng rửa"
+                      : nearby.kind === "hold"
+                      ? "giữ chuột"
+                      : "nhấn chuột"}
                   </span>
                 </div>
                 <div className="w-40 h-1 rounded-full bg-white/15 overflow-hidden">
@@ -107,6 +155,43 @@ export default function Home() {
             ) : null}
           </div>
         </>
+      )}
+
+      {/* ---------- WASH BAY (workshop) ---------- */}
+      {entered && inWorkshop && (
+        <div className="absolute inset-0 z-10 pointer-events-none select-none">
+          {/* free-cursor aiming dot */}
+          <div className="absolute inset-0 grid place-items-center">
+            <div className="w-2 h-2 rounded-full bg-cyan-200/80 ring-1 ring-black/40" />
+          </div>
+
+          {/* top label */}
+          <div className="absolute top-6 left-1/2 -translate-x-1/2 flex items-center gap-2 px-5 py-2.5 rounded-full bg-black/45 border border-white/10 backdrop-blur-xl">
+            <span className="text-lg">🛵💦</span>
+            <span className="text-[13px] font-medium tracking-wide text-white/90">Xưởng rửa xe</span>
+          </div>
+
+          {/* progress + controls */}
+          <div className="absolute bottom-10 left-1/2 -translate-x-1/2 flex flex-col items-center gap-3">
+            <div className="flex flex-col items-center gap-1.5">
+              <span className="text-[11px] text-white/70 tracking-wide">
+                Giữ chuột để xịt · rê chuột tới vết bẩn · sạch {bikeProgress}%
+              </span>
+              <div className="w-56 h-1.5 rounded-full bg-white/15 overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-cyan-300 transition-all duration-150"
+                  style={{ width: `${bikeProgress}%` }}
+                />
+              </div>
+            </div>
+            <button
+              onClick={() => exitWorkshop()}
+              className="pointer-events-auto px-5 py-2 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 text-[12px] text-white/90 tracking-wide backdrop-blur-xl transition-colors"
+            >
+              {bikeProgress >= 100 ? "Sạch bóng! Ra ngoài ✓" : "Xong / Ra ngoài (ESC)"}
+            </button>
+          </div>
+        </div>
       )}
     </main>
   );

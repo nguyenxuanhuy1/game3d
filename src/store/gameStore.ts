@@ -13,6 +13,9 @@ export interface GameState {
   entered: boolean;
   doorOpening: boolean;
 
+  /** Player is in the dedicated auto-shop wash bay (scene transition). */
+  inWorkshop: boolean;
+
   /** Target time-of-day (DayCycle smoothly lerps toward this). */
   timeTarget: number;
 
@@ -29,6 +32,8 @@ export interface GameState {
   // Actions
   openDoor: () => void;
   enterHome: () => void;
+  enterWorkshop: () => void;
+  exitWorkshop: () => void;
   setNearby: (id: string | null) => void;
   setInteracting: (id: string | null) => void;
   addProgress: (id: string, amount: number) => void;
@@ -38,6 +43,7 @@ export interface GameState {
 export const useGameStore = create<GameState>((set) => ({
   entered: false,
   doorOpening: false,
+  inWorkshop: false,
   timeTarget: MORNING,
   nearbyStationId: null,
   interactingId: null,
@@ -46,6 +52,8 @@ export const useGameStore = create<GameState>((set) => ({
 
   openDoor: () => set({ doorOpening: true }),
   enterHome: () => set({ entered: true, doorOpening: false, timeTarget: MORNING }),
+  enterWorkshop: () => set({ inWorkshop: true, interactingId: null }),
+  exitWorkshop: () => set({ inWorkshop: false, interactingId: null }),
 
   setNearby: (id) =>
     set((state) => (state.nearbyStationId === id ? {} : { nearbyStationId: id })),
@@ -73,6 +81,7 @@ export const useGameStore = create<GameState>((set) => ({
     set({
       entered: false,
       doorOpening: false,
+      inWorkshop: false,
       timeTarget: MORNING,
       nearbyStationId: null,
       interactingId: null,

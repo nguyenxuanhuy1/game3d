@@ -25,7 +25,7 @@ export default function CanvasContainer({ children }: CanvasContainerProps) {
         <div className="flex flex-col items-center gap-4">
           <div className="w-10 h-10 border-4 border-amber-900/40 border-t-amber-400 rounded-full animate-spin"></div>
           <p className="text-sm tracking-widest uppercase font-light text-amber-100/80">
-            Waking up the world...
+            Đang chuẩn bị ngôi nhà...
           </p>
         </div>
       </div>
@@ -36,8 +36,14 @@ export default function CanvasContainer({ children }: CanvasContainerProps) {
     <div className="w-full h-full absolute inset-0 overflow-hidden bg-[#160f17]">
       <Canvas
         flat
+        // Cap the resolution so 4K / retina screens don't melt the GPU, and let
+        // R3F drop quality before it ever drops frames.
+        dpr={[1, 1.75]}
+        performance={{ min: 0.5 }}
         shadows={{ type: THREE.PCFShadowMap }}
-        gl={{ antialias: true, alpha: false, powerPreference: "high-performance" }}
+        // antialias is handled by the EffectComposer (multisampling) below, so we
+        // turn off the context-level MSAA to avoid paying for it twice.
+        gl={{ antialias: false, alpha: false, powerPreference: "high-performance", stencil: false, depth: true }}
         camera={{ fov: 60, near: 0.1, far: 220, position: [0, 1.65, 10] }}
       >
         {/* Sky colour, fog and sun/ambient all driven by the time-of-day cycle */}
@@ -45,7 +51,7 @@ export default function CanvasContainer({ children }: CanvasContainerProps) {
 
         {/* Self-contained warm studio IBL so metal / wet / glossy surfaces reflect
             believable golden light without any external HDR download. */}
-        <Environment resolution={256} frames={1} background={false}>
+        <Environment resolution={128} frames={1} background={false}>
           <Lightformer form="rect" intensity={2.2} color="#ffb066" position={[6, 7, 6]} scale={[10, 10, 1]} target={[0, 0, 0]} />
           <Lightformer form="rect" intensity={0.9} color="#8aa0d8" position={[-8, 4, -5]} scale={[7, 7, 1]} target={[0, 0, 0]} />
           <Lightformer form="rect" intensity={0.7} color="#c98a5a" rotation={[Math.PI / 2, 0, 0]} position={[0, -3, 0]} scale={[14, 14, 1]} />

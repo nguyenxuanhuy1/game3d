@@ -14,6 +14,8 @@ export interface Station {
   kind: StationKind;
   /** Short Vietnamese label shown in the HUD prompt. */
   label: string;
+  /** Emoji icon shown in the HUD task list / prompt. */
+  icon: string;
   /** How much progress one interaction adds (hold = per second, tap = per press). */
   step: number;
   /** Accent colour for the HUD chip. */
@@ -29,6 +31,7 @@ export const STATIONS: Station[] = [
     radius: 2.4,
     kind: "hold",
     label: "Pha cà phê",
+    icon: "☕",
     step: 55,
     accent: "#b45309",
   },
@@ -39,6 +42,7 @@ export const STATIONS: Station[] = [
     radius: 2.4,
     kind: "tap",
     label: "Đảo chảo (nấu ăn)",
+    icon: "🍳",
     step: 20,
     accent: "#ea580c",
   },
@@ -49,6 +53,7 @@ export const STATIONS: Station[] = [
     radius: 2.4,
     kind: "hold",
     label: "Rửa bát",
+    icon: "🍽️",
     step: 45,
     accent: "#0ea5e9",
   },
@@ -61,6 +66,7 @@ export const STATIONS: Station[] = [
     radius: 2.2,
     kind: "hold",
     label: "Đọc sách bên lò sưởi",
+    icon: "📖",
     step: 40,
     accent: "#a855f7",
   },
@@ -71,6 +77,7 @@ export const STATIONS: Station[] = [
     radius: 2.2,
     kind: "tap",
     label: "Bật đĩa than",
+    icon: "🎵",
     step: 100,
     accent: "#f43f5e",
   },
@@ -79,9 +86,10 @@ export const STATIONS: Station[] = [
     zone: "living",
     pos: [-2.6, 0.2, 2.6],
     radius: 2.2,
-    kind: "tap",
-    label: "Cho mèo ăn",
-    step: 50,
+    kind: "hold",
+    label: "Vuốt ve chú mèo",
+    icon: "🐱",
+    step: 42,
     accent: "#f59e0b",
   },
 
@@ -93,8 +101,22 @@ export const STATIONS: Station[] = [
     radius: 2.6,
     kind: "hold",
     label: "Tưới cây",
+    icon: "🪴",
     step: 38,
     accent: "#22c55e",
+  },
+
+  // ---- Outdoor: Garden ----
+  {
+    id: "firewood",
+    zone: "garden",
+    pos: [8.0, 0.8, 4.0],
+    radius: 2.6,
+    kind: "hold",
+    label: "Chẻ củi",
+    icon: "🪓",
+    step: 34,
+    accent: "#b97a3a",
   },
 
   // ---- Outdoor: Garage / Carport ----
@@ -105,6 +127,7 @@ export const STATIONS: Station[] = [
     radius: 3.0,
     kind: "hold",
     label: "Rửa xe máy",
+    icon: "🛵",
     step: 30,
     accent: "#38bdf8",
   },

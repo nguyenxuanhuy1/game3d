@@ -1,38 +1,100 @@
 "use client";
 
-import React, { useRef } from "react";
-import { useFrame } from "@react-three/fiber";
-import { Sparkles, Float } from "@react-three/drei";
+import React, { Suspense, useMemo, useRef } from "react";
+import { useFrame, useThree } from "@react-three/fiber";
+import { Sparkles, Float, useGLTF } from "@react-three/drei";
 import * as THREE from "three";
 import { useGameStore } from "@/store/gameStore";
 
-// Mud spots on the bike (local to the bike group), cleaned in order as progress rises.
-const BIKE_SPOTS: [number, number, number][] = [
-  [0.62, 0.62, 0.16],
-  [0.2, 0.74, 0.18],
-  [-0.26, 0.76, 0.16],
-  [-0.02, 0.42, 0.2],
-  [-0.62, 0.5, 0.18],
-  [0.62, 0.34, 0.2],
+// ---------------------------------------------------------------------------
+// Real 3D scooter model (an underbone, same family as the Honda Wave Alpha).
+//   Model: "low poly scooter" by Thomas Saint Pierre (s1pierro)
+//   Source: https://poly.pizza/m/awXCP7LUcz6 — licensed CC-BY 3.0
+// Native model dimensions (units): X 68.79, Y 122.77, Z 196.94 (length on Z),
+// center [0, -5.22, 4.27], min.y -66.60. We normalise to ~1.7 long, drop it on
+// the ground and centre it on the carport pad. Tweak the two constants below to
+// re-size / re-orient the parked bike.
+// ---------------------------------------------------------------------------
+const MODEL_URL = "/models/scooter.glb";
+const BIKE_SCALE = 0.0086; // 196.94 * 0.0086 ≈ 1.69 units long
+const BIKE_ROT_Y = 0; // 0 = length runs along Z (side profile faces the door)
+const MODEL_Y = 66.599 * BIKE_SCALE; // lift so the wheels touch the ground
+const MODEL_Z = -4.273 * BIKE_SCALE; // re-centre length
+
+// Grime blobs in the bike's normalised local frame (x = width ±0.3,
+// y = height 0..1.05, z = length ±0.85). The player only cleans a blob by
+// aiming the hose at it; dirty water then trickles down to the ground.
+const BIKE_GRIME: [number, number, number][] = [
+  [0.0, 0.5, 0.72],
+  [0.26, 0.5, 0.5],
+  [-0.26, 0.5, 0.5],
+  [0.0, 0.32, 0.3],
+  [0.28, 0.55, 0.05],
+  [-0.28, 0.55, 0.05],
+  [0.0, 0.78, -0.05],
+  [0.26, 0.52, -0.4],
+  [-0.26, 0.52, -0.4],
+  [0.0, 0.42, -0.72],
+  [0.0, 0.28, 0.8],
+  [0.0, 0.28, -0.8],
+  [0.22, 0.34, 0.78],
+  [-0.22, 0.34, -0.78],
 ];
+const SPLASH_COUNT = 10;
+
+function ScooterModel() {
+  const { scene } = useGLTF(MODEL_URL);
+  // Clone so shadows / hidden helpers don't mutate the shared cache, and drop
+  // the stray "Cube" helper node that ships inside this model.
+  const model = useMemo(() => {
+    const c = scene.clone(true);
+    c.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (m.isMesh) {
+        m.castShadow = true;
+        m.receiveShadow = true;
+      }
+      if (o.name === "Cube") o.visible = false;
+    });
+    return c;
+  }, [scene]);
+
+  return <primitive object={model} scale={BIKE_SCALE} position={[0, MODEL_Y, MODEL_Z]} />;
+}
+useGLTF.preload(MODEL_URL);
 
 export default function OutdoorZone() {
+  const { camera } = useThree();
+  const addProgress = useGameStore((s) => s.addProgress);
+
+  // ---- plant refs ----
   const plantRef = useRef<THREE.Group>(null);
   const soilMatRef = useRef<THREE.MeshStandardMaterial>(null);
   const flowerRef = useRef<THREE.Group>(null);
   const dropRefs = useRef<THREE.Mesh[]>([]);
-  const bikeSpotRefs = useRef<THREE.Mesh[]>([]);
-  const foamRefs = useRef<THREE.Mesh[]>([]);
-  const sprayRefs = useRef<THREE.Mesh[]>([]);
-  const shineRef = useRef<THREE.Mesh>(null);
+  const canRef = useRef<THREE.Group>(null);
+  const canStreamRef = useRef<THREE.Mesh>(null);
 
-  useFrame((state) => {
+  // ---- bike wash refs ----
+  const grimeRefs = useRef<THREE.Mesh[]>([]);
+  const dripRefs = useRef<THREE.Mesh[]>([]);
+  const splashRefs = useRef<THREE.Mesh[]>([]);
+  const shineRef = useRef<THREE.Mesh>(null);
+  const dirt = useRef<number[]>(BIKE_GRIME.map(() => 1));
+
+  // scratch vectors (no per-frame allocation)
+  const tmp = useMemo(
+    () => ({ spot: new THREE.Vector3(), dir: new THREE.Vector3(), cam: new THREE.Vector3() }),
+    []
+  );
+
+  useFrame((state, delta) => {
     const t = state.clock.getElapsedTime();
     const { progress, interactingId } = useGameStore.getState();
     const plant = progress.plant ?? 0;
-    const bike = progress.bike ?? 0;
+    const bikeProg = progress.bike ?? 0;
 
-    // ----- Plant growth + watering -----
+    // ============ PLANT: watering can + growth ============
     const watering = interactingId === "plant" && plant < 100;
     if (plantRef.current) {
       const g = 0.5 + (plant / 100) * 0.7;
@@ -43,42 +105,99 @@ export default function OutdoorZone() {
       soilMatRef.current.color.set("#5b3a1a").lerp(new THREE.Color("#2c1a0a"), plant / 100);
     }
     if (flowerRef.current) flowerRef.current.visible = plant >= 100;
+    if (canRef.current) {
+      const targetTilt = watering ? -0.95 : 0;
+      canRef.current.rotation.z = THREE.MathUtils.lerp(canRef.current.rotation.z, targetTilt, 0.12);
+    }
+    if (canStreamRef.current) {
+      canStreamRef.current.visible = watering;
+      canStreamRef.current.scale.y = 0.9 + Math.sin(t * 22) * 0.1;
+    }
     dropRefs.current.forEach((m, i) => {
       if (!m) return;
       const frac = (t * 1.1 + i * 0.2) % 1;
-      m.position.set(Math.sin(i * 3) * 0.18, 1.5 - frac * 1.0, Math.cos(i * 2) * 0.18);
-      m.scale.setScalar(watering ? 0.025 : 0);
+      m.position.set(Math.sin(i * 3) * 0.12, 0.95 - frac * 0.85, Math.cos(i * 2) * 0.12);
+      m.scale.setScalar(watering ? 0.022 : 0);
     });
 
-    // ----- Bike: clean spots, foam/spray, shine -----
-    const washing = interactingId === "bike" && bike < 100;
-    bikeSpotRefs.current.forEach((m, i) => {
-      if (m) m.visible = bike < ((i + 1) / BIKE_SPOTS.length) * 100;
-    });
-    foamRefs.current.forEach((m, i) => {
+    // ============ BIKE: directional pressure wash ============
+    const washing = interactingId === "bike";
+    camera.getWorldDirection(tmp.dir);
+    tmp.cam.copy(camera.position);
+
+    let dirtSum = 0;
+    let hitIndex = -1;
+    for (let i = 0; i < BIKE_GRIME.length; i++) {
+      const gm = grimeRefs.current[i];
+      const dr = dripRefs.current[i];
+      let inCone = false;
+
+      if (gm) {
+        gm.getWorldPosition(tmp.spot);
+        tmp.spot.sub(tmp.cam);
+        const dist = tmp.spot.length();
+        tmp.spot.normalize();
+        const aim = tmp.spot.dot(tmp.dir);
+        inCone = washing && aim > 0.95 && dist < 7 && dirt.current[i] > 0.001;
+        if (inCone) {
+          dirt.current[i] = Math.max(0, dirt.current[i] - delta * 0.85);
+          hitIndex = i;
+        }
+        const d = dirt.current[i];
+        gm.visible = d > 0.02;
+        const s = 0.05 + d * 0.085;
+        gm.scale.set(s, s * 0.7, s);
+        (gm.material as THREE.MeshStandardMaterial).opacity = Math.min(1, d * 1.3);
+      }
+
+      // dirty water trickling down from the spot being rinsed
+      if (dr) {
+        if (inCone) {
+          dr.visible = true;
+          const base = BIKE_GRIME[i];
+          const frac = (t * 1.6 + i * 0.31) % 1;
+          dr.position.set(base[0], base[1] * (1 - frac) + 0.02, base[2] + 0.02);
+          dr.scale.set(0.018, 0.06 + frac * 0.12, 0.018);
+          (dr.material as THREE.MeshStandardMaterial).opacity = 0.75 * (1 - frac);
+        } else {
+          dr.visible = false;
+        }
+      }
+
+      dirtSum += dirt.current[i];
+    }
+
+    // Derive cleanliness → progress (only the spots you actually rinse count).
+    const cleanPct = (1 - dirtSum / BIKE_GRIME.length) * 100;
+    if (cleanPct > bikeProg + 0.15) addProgress("bike", cleanPct - bikeProg);
+
+    // Impact splash bursting off whichever spot is being hit.
+    splashRefs.current.forEach((m, i) => {
       if (!m) return;
-      const frac = (t * 0.8 + i * 0.3) % 1;
-      m.position.set(Math.sin(i * 4) * 0.5, 0.6 + frac * 0.5, Math.cos(i * 3) * 0.25);
-      m.scale.setScalar(washing ? (1 - frac) * 0.05 + 0.01 : 0);
+      if (hitIndex >= 0) {
+        const base = BIKE_GRIME[hitIndex];
+        const frac = (t * 2.4 + i * 0.21) % 1;
+        m.position.set(
+          base[0] + Math.sin(i * 2.1) * 0.18 * frac,
+          base[1] + 0.04 - frac * base[1] * 0.6,
+          base[2] + Math.cos(i * 3.3) * 0.18 * frac + 0.04
+        );
+        m.scale.setScalar((1 - frac) * 0.045);
+      } else {
+        m.scale.setScalar(0);
+      }
     });
-    sprayRefs.current.forEach((m, i) => {
-      if (!m) return;
-      const frac = (t * 1.4 + i * 0.25) % 1;
-      m.position.set(Math.sin(t * 3 + i) * 0.5, 1.0 - frac * 0.6, Math.cos(i) * 0.3);
-      m.scale.setScalar(washing ? 0.02 : 0);
-    });
+
+    // Mirror-finish sweep once the bike is spotless.
     if (shineRef.current) {
       const mat = shineRef.current.material as THREE.MeshBasicMaterial;
-      if (bike >= 100) {
+      if (bikeProg >= 100) {
         const sweep = Math.sin(t * 1.2) * 0.5 + 0.5;
-        shineRef.current.position.x = -1.0 + sweep * 2.0;
-        mat.opacity = 0.35 * (1 - Math.abs(sweep - 0.5) * 1.6);
+        shineRef.current.position.z = -0.9 + sweep * 1.8;
+        mat.opacity = 0.4 * (1 - Math.abs(sweep - 0.5) * 1.6);
       } else mat.opacity = 0;
     }
   });
-
-  const chrome = <meshStandardMaterial color="#e8eaf0" roughness={0.12} metalness={1} envMapIntensity={1.4} />;
-  const paint = <meshStandardMaterial color="#c2410c" roughness={0.13} metalness={0.6} envMapIntensity={1.3} />;
 
   return (
     <group>
@@ -89,7 +208,7 @@ export default function OutdoorZone() {
       </mesh>
       {/* stone path from the glass door */}
       {Array.from({ length: 5 }).map((_, i) => (
-        <mesh key={i} rotation={[-Math.PI / 2, 0, (i % 2 ? 0.2 : -0.2)]} position={[6.8 + i * 0.85, 0.014, 0.5]} receiveShadow>
+        <mesh key={i} rotation={[-Math.PI / 2, 0, i % 2 ? 0.2 : -0.2]} position={[6.8 + i * 0.85, 0.014, 0.5]} receiveShadow>
           <cylinderGeometry args={[0.34, 0.36, 0.03, 8]} />
           <meshStandardMaterial color="#8a8275" roughness={0.9} />
         </mesh>
@@ -156,7 +275,7 @@ export default function OutdoorZone() {
               <meshStandardMaterial color={leaf.c} roughness={0.5} />
             </mesh>
           ))}
-          {/* blossom (visibility toggled in useFrame) */}
+          {/* blossom (toggled in useFrame) */}
           <group ref={flowerRef} position={[0, 0.78, 0]} visible={false}>
             <Float speed={3} floatIntensity={0.3} rotationIntensity={0.2}>
               <mesh castShadow>
@@ -175,7 +294,36 @@ export default function OutdoorZone() {
             </Float>
           </group>
         </group>
-        {/* watering droplets */}
+
+        {/* ---- Watering can (tilts & pours while watering) ---- */}
+        <group ref={canRef} position={[0.0, 1.0, 0.42]}>
+          <mesh castShadow>
+            <cylinderGeometry args={[0.14, 0.16, 0.26, 20]} />
+            <meshStandardMaterial color="#2f9e44" roughness={0.4} metalness={0.4} envMapIntensity={1.1} />
+          </mesh>
+          <mesh position={[0, 0.14, 0]}>
+            <torusGeometry args={[0.14, 0.015, 8, 20]} />
+            <meshStandardMaterial color="#268a3a" roughness={0.4} metalness={0.4} />
+          </mesh>
+          <mesh position={[0, 0.18, -0.02]} rotation={[Math.PI / 2, 0, 0]}>
+            <torusGeometry args={[0.1, 0.012, 8, 16, Math.PI]} />
+            <meshStandardMaterial color="#268a3a" roughness={0.5} metalness={0.4} />
+          </mesh>
+          <mesh position={[0.18, 0.02, 0]} rotation={[0, 0, -0.7]}>
+            <cylinderGeometry args={[0.018, 0.03, 0.34, 12]} />
+            <meshStandardMaterial color="#268a3a" roughness={0.45} metalness={0.4} />
+          </mesh>
+          <mesh position={[0.3, 0.13, 0]} rotation={[0, 0, -0.7]}>
+            <cylinderGeometry args={[0.05, 0.04, 0.04, 12]} />
+            <meshStandardMaterial color="#1f7a31" roughness={0.5} metalness={0.4} />
+          </mesh>
+          <mesh ref={canStreamRef} position={[0.32, -0.35, 0]} visible={false}>
+            <cylinderGeometry args={[0.012, 0.02, 0.8, 8]} />
+            <meshStandardMaterial color="#bdecff" transparent opacity={0.6} emissive="#7dd3fc" emissiveIntensity={0.4} />
+          </mesh>
+        </group>
+
+        {/* watering splash at the soil */}
         {Array.from({ length: 10 }).map((_, i) => (
           <mesh key={i} ref={(el) => { if (el) dropRefs.current[i] = el; }}>
             <sphereGeometry args={[1, 6, 6]} />
@@ -184,9 +332,9 @@ export default function OutdoorZone() {
         ))}
       </group>
 
-      {/* ============ CARPORT + MOTORBIKE STATION ============ */}
-      {/* carport roof */}
+      {/* ============ CARPORT + SCOOTER (Wave-Alpha-style underbone) ============ */}
       <group position={[10.8, 0, 1.0]}>
+        {/* carport roof */}
         <mesh position={[0, 2.4, 0]} castShadow>
           <boxGeometry args={[3.0, 0.1, 3.0]} />
           <meshStandardMaterial color="#5a4533" roughness={0.8} />
@@ -205,108 +353,45 @@ export default function OutdoorZone() {
           <meshStandardMaterial color="#6b6358" roughness={0.7} metalness={0.2} />
         </mesh>
 
-        {/* ----- the motorbike (profile faces -Z toward the door) ----- */}
-        <group position={[0, 0, 0]} rotation={[0, -Math.PI / 2, 0]}>
-          <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.013, 0]}>
-            <planeGeometry args={[1.9, 0.7]} />
-            <meshBasicMaterial color="#000000" transparent opacity={0.3} />
+        {/* the parked scooter + everything that lives in its normalised frame */}
+        <group rotation={[0, BIKE_ROT_Y, 0]}>
+          {/* contact shadow */}
+          <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.016, 0]}>
+            <planeGeometry args={[0.7, 1.9]} />
+            <meshBasicMaterial color="#000000" transparent opacity={0.28} />
           </mesh>
-          {[-0.62, 0.62].map((x, wi) => (
-            <group key={wi} position={[x, 0.34, 0]}>
-              <mesh rotation={[Math.PI / 2, 0, 0]} castShadow>
-                <torusGeometry args={[0.28, 0.075, 16, 32]} />
-                <meshStandardMaterial color="#0c0c0e" roughness={0.85} />
-              </mesh>
-              <mesh rotation={[Math.PI / 2, 0, 0]}>
-                <cylinderGeometry args={[0.21, 0.21, 0.05, 24]} />
-                <meshStandardMaterial color="#26262b" roughness={0.4} metalness={0.7} />
-              </mesh>
-              <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, 0, 0.001]}>
-                <cylinderGeometry args={[0.07, 0.07, 0.07, 16]} />
-                {chrome}
-              </mesh>
-              {Array.from({ length: 6 }).map((_, s) => (
-                <mesh key={s} rotation={[0, 0, (s * Math.PI) / 3]}>
-                  <boxGeometry args={[0.4, 0.018, 0.018]} />
-                  {chrome}
-                </mesh>
-              ))}
-            </group>
-          ))}
-          {/* engine */}
-          <mesh position={[-0.02, 0.4, 0]} castShadow>
-            <boxGeometry args={[0.5, 0.34, 0.34]} />
-            <meshStandardMaterial color="#3b3b42" roughness={0.35} metalness={0.85} envMapIntensity={1.2} />
-          </mesh>
-          {/* tank */}
-          <mesh position={[0.2, 0.74, 0]} castShadow>
-            <sphereGeometry args={[0.26, 24, 16]} />
-            {paint}
-          </mesh>
-          {/* seat */}
-          <mesh position={[-0.32, 0.72, 0]} castShadow>
-            <boxGeometry args={[0.62, 0.12, 0.26]} />
-            <meshStandardMaterial color="#1b1714" roughness={0.7} />
-          </mesh>
-          <mesh position={[-0.1, 0.62, 0]} rotation={[0, 0, -0.15]} castShadow>
-            <boxGeometry args={[0.7, 0.05, 0.05]} />
-            {chrome}
-          </mesh>
-          {/* front fork + headlight + bar */}
-          <group position={[0.62, 0, 0]}>
-            <mesh position={[0, 0.62, 0.08]} rotation={[0, 0, 0.25]} castShadow>
-              <cylinderGeometry args={[0.025, 0.025, 0.62, 12]} />
-              {chrome}
-            </mesh>
-            <mesh position={[0, 0.62, -0.08]} rotation={[0, 0, 0.25]} castShadow>
-              <cylinderGeometry args={[0.025, 0.025, 0.62, 12]} />
-              {chrome}
-            </mesh>
-            <mesh position={[0, 0.6, 0]} rotation={[Math.PI / 2, 0, 0]}>
-              <torusGeometry args={[0.3, 0.04, 8, 24, Math.PI * 0.7]} />
-              {paint}
-            </mesh>
-            <mesh position={[0.12, 0.86, 0]} rotation={[0, 0, Math.PI / 2]} castShadow>
-              <cylinderGeometry args={[0.12, 0.12, 0.1, 24]} />
-              <meshStandardMaterial color="#2a2a2e" metalness={0.8} roughness={0.3} />
-            </mesh>
-            <mesh position={[0.18, 0.86, 0]} rotation={[0, 0, Math.PI / 2]}>
-              <cylinderGeometry args={[0.09, 0.09, 0.02, 24]} />
-              <meshBasicMaterial color="#fff4d6" />
-            </mesh>
-            <mesh position={[0.02, 1.02, 0]} rotation={[Math.PI / 2, 0, 0]} castShadow>
-              <cylinderGeometry args={[0.02, 0.02, 0.56, 12]} />
-              {chrome}
-            </mesh>
-          </group>
-          {/* rear fender + taillight */}
-          <mesh position={[-0.62, 0.6, 0]} rotation={[Math.PI / 2, 0, Math.PI]}>
-            <torusGeometry args={[0.3, 0.04, 8, 24, Math.PI * 0.6]} />
-            {paint}
-          </mesh>
-          <mesh position={[-0.92, 0.6, 0]}>
-            <boxGeometry args={[0.04, 0.08, 0.14]} />
-            <meshBasicMaterial color="#ef4444" />
-          </mesh>
-          {/* exhaust */}
-          <mesh position={[0.0, 0.2, 0.2]} rotation={[0, 0, Math.PI / 2]} castShadow>
-            <cylinderGeometry args={[0.05, 0.05, 1.1, 16]} />
-            {chrome}
-          </mesh>
-          {/* mud spots */}
-          {BIKE_SPOTS.map((p, i) => (
-            <mesh key={i} position={p} ref={(el) => { if (el) bikeSpotRefs.current[i] = el; }}>
-              <sphereGeometry args={[0.1, 12, 12]} />
-              <meshStandardMaterial color="#5b3618" roughness={0.98} />
-            </mesh>
-          ))}
-        </group>
 
-        {/* shine sweep handled in useFrame */}
-        <mesh ref={shineRef} position={[0, 0.7, 0]} rotation={[0, 0, 0.3]}>
-          <planeGeometry args={[0.18, 1.0]} />
-          <meshBasicMaterial color="#ffffff" transparent opacity={0} blending={THREE.AdditiveBlending} depthWrite={false} />
-        </mesh>
+          <Suspense fallback={null}>
+            <ScooterModel />
+          </Suspense>
+
+          {/* ----- grime blobs (washed off by aiming the hose) ----- */}
+          {BIKE_GRIME.map((p, i) => (
+            <mesh key={i} position={p} ref={(el) => { if (el) grimeRefs.current[i] = el; }}>
+              <sphereGeometry args={[1, 10, 10]} />
+              <meshStandardMaterial color="#2e1c0e" roughness={1} transparent opacity={1} />
+            </mesh>
+          ))}
+          {/* dirty water trickles */}
+          {BIKE_GRIME.map((_, i) => (
+            <mesh key={`drip-${i}`} ref={(el) => { if (el) dripRefs.current[i] = el; }} visible={false}>
+              <cylinderGeometry args={[1, 1, 1, 6]} />
+              <meshStandardMaterial color="#4a3318" transparent opacity={0.7} roughness={0.6} />
+            </mesh>
+          ))}
+          {/* impact splash off the spot being rinsed */}
+          {Array.from({ length: SPLASH_COUNT }).map((_, i) => (
+            <mesh key={`splash-${i}`} ref={(el) => { if (el) splashRefs.current[i] = el; }}>
+              <sphereGeometry args={[1, 6, 6]} />
+              <meshStandardMaterial color="#dff4ff" transparent opacity={0.8} roughness={0.1} />
+            </mesh>
+          ))}
+          {/* shine sweep once spotless (slides along the length) */}
+          <mesh ref={shineRef} position={[0, 0.6, 0]} rotation={[0, 0, 0.3]}>
+            <planeGeometry args={[0.6, 0.18]} />
+            <meshBasicMaterial color="#ffffff" transparent opacity={0} blending={THREE.AdditiveBlending} depthWrite={false} />
+          </mesh>
+        </group>
 
         {/* soapy bucket */}
         <Float speed={2} floatIntensity={0.2} rotationIntensity={0.2}>
@@ -321,20 +406,6 @@ export default function OutdoorZone() {
             </mesh>
           </group>
         </Float>
-
-        {/* foam + spray pools */}
-        {Array.from({ length: 12 }).map((_, i) => (
-          <mesh key={`foam-${i}`} ref={(el) => { if (el) foamRefs.current[i] = el; }}>
-            <sphereGeometry args={[1, 6, 6]} />
-            <meshStandardMaterial color="#ecfeff" roughness={0.02} metalness={0.1} transparent opacity={0.75} />
-          </mesh>
-        ))}
-        {Array.from({ length: 10 }).map((_, i) => (
-          <mesh key={`spray-${i}`} ref={(el) => { if (el) sprayRefs.current[i] = el; }}>
-            <sphereGeometry args={[1, 6, 6]} />
-            <meshStandardMaterial color="#bdecff" transparent opacity={0.8} />
-          </mesh>
-        ))}
       </group>
 
       {/* sparkles when bike is spotless */}

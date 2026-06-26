@@ -389,15 +389,13 @@ export default function IntroDoorScene() {
           <sphereGeometry args={[0.035, 16, 16]} />
           <meshBasicMaterial color="#fef08a" />
         </mesh>
-        {/* Warm Porch Light Source */}
+        {/* Warm Porch Light Source (no shadow — point-light shadows are a 6×
+            render pass and the directional sun already shadows the porch) */}
         <pointLight
           intensity={3.2}
           color="#fef08a"
           distance={10}
           decay={1.8}
-          castShadow
-          shadow-mapSize-width={1024}
-          shadow-mapSize-height={1024}
         />
       </group>
     </group>

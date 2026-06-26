@@ -1,11 +1,14 @@
 "use client";
 
-import React from "react";
-import { MeshReflectorMaterial } from "@react-three/drei";
-import * as THREE from "three";
-import KitchenZone from "./KitchenZone";
-import LivingZone from "./LivingZone";
-import OutdoorZone from "./OutdoorZone";
+import React, { Suspense, lazy } from "react";
+import { MeshReflectorMaterial, Instances, Instance } from "@react-three/drei";
+
+// Each zone/station is its own lazy chunk so the whole world isn't bundled and
+// parsed up front — they stream in independently right after you step inside.
+const KitchenZone = lazy(() => import("./KitchenZone"));
+const LivingZone = lazy(() => import("./LivingZone"));
+const OutdoorZone = lazy(() => import("./OutdoorZone"));
+const FirewoodStation = lazy(() => import("./FirewoodStation"));
 
 // One continuous, walkable home: kitchen (left) → living room (centre) →
 // glass doors out to the garden & carport (right). Layout matches the
@@ -14,45 +17,46 @@ export default function HomeWorld() {
   return (
     <group>
       {/* ---------------- Floors ---------------- */}
-      {/* Living-room wood floor (reflective, lightly polished) */}
+      {/* Living-room wood floor (reflective, lightly polished).
+          Reflection res/blur kept modest — this planar mirror re-renders the
+          scene every frame, so it's the single most expensive surface here. */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0.25, 0, -1.5]} receiveShadow>
         <planeGeometry args={[11.5, 15]} />
         <MeshReflectorMaterial
-          resolution={512}
-          mixBlur={1.6}
-          mixStrength={1.2}
-          blur={[300, 80]}
-          roughness={0.7}
+          resolution={256}
+          mixBlur={1}
+          mixStrength={1.0}
+          blur={[120, 40]}
+          roughness={0.75}
           color="#6b4a32"
           metalness={0.2}
-          mirror={0.15}
+          mirror={0.12}
         />
       </mesh>
-      {/* Plank seams on the wood floor */}
-      {Array.from({ length: 14 }).map((_, i) => (
-        <mesh key={`plank-${i}`} rotation={[-Math.PI / 2, 0, 0]} position={[-5.3 + i * 0.84, 0.011, -1.5]}>
-          <planeGeometry args={[0.03, 15]} />
-          <meshBasicMaterial color="#3d2817" transparent opacity={0.6} />
-        </mesh>
-      ))}
+      {/* Plank seams on the wood floor — instanced into a single draw call */}
+      <Instances limit={14} range={14} position={[0, 0.011, -1.5]} rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[0.03, 15]} />
+        <meshBasicMaterial color="#3d2817" transparent opacity={0.6} />
+        {Array.from({ length: 14 }).map((_, i) => (
+          <Instance key={`plank-${i}`} position={[-5.3 + i * 0.84, 0, 0]} />
+        ))}
+      </Instances>
 
       {/* Kitchen tiled floor */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[-10.25, 0.005, -1.5]} receiveShadow>
         <planeGeometry args={[9.5, 15]} />
         <meshStandardMaterial color="#cdbfa6" roughness={0.55} metalness={0.1} />
       </mesh>
-      {Array.from({ length: 7 }).map((_, r) =>
-        Array.from({ length: 11 }).map((_, c) => (
-          <mesh
-            key={`tile-${r}-${c}`}
-            rotation={[-Math.PI / 2, 0, 0]}
-            position={[-14.6 + c * 0.85, 0.012, -8.4 + r * 2.1]}
-          >
-            <planeGeometry args={[0.78, 0.06]} />
-            <meshBasicMaterial color="#a8987c" />
-          </mesh>
-        ))
-      )}
+      {/* 77 grout lines collapsed into one instanced draw call */}
+      <Instances limit={77} range={77} position={[0, 0.012, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[0.78, 0.06]} />
+        <meshBasicMaterial color="#a8987c" />
+        {Array.from({ length: 7 }).map((_, r) =>
+          Array.from({ length: 11 }).map((_, c) => (
+            <Instance key={`tile-${r}-${c}`} position={[-14.6 + c * 0.85, 8.4 - r * 2.1, 0]} />
+          ))
+        )}
+      </Instances>
 
       {/* ---------------- Ceiling (interior only) ---------------- */}
       <mesh rotation={[Math.PI / 2, 0, 0]} position={[-4.5, 3.2, -1.5]}>
@@ -132,15 +136,19 @@ export default function HomeWorld() {
         <meshStandardMaterial color="#3a2c22" roughness={0.6} metalness={0.3} />
       </mesh>
 
-      {/* ---------------- Soft warm fill lights (interior) ---------------- */}
-      <pointLight position={[-10, 2.9, -3]} intensity={9} color="#ffd9a0" distance={11} decay={1.7} castShadow shadow-mapSize-width={1024} shadow-mapSize-height={1024} />
-      <pointLight position={[0, 2.9, -2]} intensity={10} color="#ffdca8" distance={12} decay={1.7} castShadow shadow-mapSize-width={1024} shadow-mapSize-height={1024} />
+      {/* ---------------- Soft warm fill lights (interior) ----------------
+          Shadow casting removed: point-light shadows render the scene 6× each
+          (cube map). The single directional sun in DayCycle carries all shadows,
+          and these just add warm fill — no visible shadow loss. */}
+      <pointLight position={[-10, 2.9, -3]} intensity={9} color="#ffd9a0" distance={11} decay={1.7} />
+      <pointLight position={[0, 2.9, -2]} intensity={10} color="#ffdca8" distance={12} decay={1.7} />
       <pointLight position={[1, 2.9, 4]} intensity={5} color="#ffe6c0" distance={9} decay={1.8} />
 
-      {/* ---------------- Zones ---------------- */}
-      <KitchenZone />
-      <LivingZone />
-      <OutdoorZone />
+      {/* ---------------- Zones (each loads as its own chunk) ---------------- */}
+      <Suspense fallback={null}><KitchenZone /></Suspense>
+      <Suspense fallback={null}><LivingZone /></Suspense>
+      <Suspense fallback={null}><OutdoorZone /></Suspense>
+      <Suspense fallback={null}><FirewoodStation /></Suspense>
     </group>
   );
 }

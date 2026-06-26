@@ -172,13 +172,16 @@ export default function PlayerControls() {
     const station = best ? STATION_MAP[best] : null;
 
     if (acting && station) {
-      if (station.kind === "hold") {
-        addProgress(station.id, station.step * delta);
-        setInteracting(station.id);
-      } else if (!prevActing.current) {
-        // tap: one shot on the rising edge
-        addProgress(station.id, station.step);
-        setInteracting(station.id);
+      setInteracting(station.id);
+      // The bike wash is driven by OutdoorZone instead — progress only rises
+      // for the grime spots the player actually aims the hose at.
+      if (station.id !== "bike") {
+        if (station.kind === "hold") {
+          addProgress(station.id, station.step * delta);
+        } else if (!prevActing.current) {
+          // tap: one shot on the rising edge
+          addProgress(station.id, station.step);
+        }
       }
     } else {
       setInteracting(null);
@@ -194,20 +197,20 @@ export default function PlayerControls() {
       {!locked && (
         <Html fullscreen>
           <div
-            className="absolute inset-0 z-40 flex items-center justify-center bg-black/45 backdrop-blur-[2px] cursor-pointer select-none"
+            className="absolute inset-0 z-40 flex flex-col items-center justify-center gap-5 bg-black/55 backdrop-blur-md cursor-pointer select-none"
             onClick={() => controlsRef.current?.lock()}
           >
-            <div className="px-7 py-5 rounded-2xl bg-zinc-900/90 border border-amber-700/40 text-center shadow-2xl max-w-sm">
-              <p className="text-sm font-semibold text-amber-50 uppercase tracking-widest">
-                Nhấp để bắt đầu một ngày
-              </p>
-              <p className="text-xs text-amber-100/70 mt-3 leading-relaxed">
-                <span className="px-1.5 py-0.5 rounded bg-zinc-800 text-amber-200 font-mono">WASD</span> để đi ·
-                di chuột để nhìn quanh<br />
-                Lại gần đồ vật rồi giữ <span className="px-1.5 py-0.5 rounded bg-zinc-800 text-amber-200 font-mono">E</span> hoặc <span className="px-1.5 py-0.5 rounded bg-zinc-800 text-amber-200 font-mono">chuột</span> để làm việc<br />
-                <span className="px-1.5 py-0.5 rounded bg-zinc-800 text-amber-200 font-mono">ESC</span> để thả chuột
-              </p>
-            </div>
+            <p className="text-lg font-light tracking-[0.25em] text-amber-50/90 uppercase">
+              Nhấp để bắt đầu
+            </p>
+            <p className="text-[11px] text-white/50 tracking-wide">
+              <span className="text-white/75 font-mono">WASD</span> di chuyển ·
+              chuột nhìn quanh · giữ chuột để tương tác ·
+              <span className="text-white/75 font-mono"> ESC</span> thoát
+            </p>
+            <p className="absolute bottom-5 text-[9px] text-white/20">
+              Mô hình xe: “low poly scooter” by Thomas Saint Pierre — CC BY 3.0
+            </p>
           </div>
         </Html>
       )}

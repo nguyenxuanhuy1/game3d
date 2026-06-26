@@ -1,0 +1,11 @@
+3D MODEL ATTRIBUTION
+====================
+
+"low poly scooter"
+  by Thomas Saint Pierre (s1pierro)
+  Source: https://poly.pizza/m/awXCP7LUcz6
+  License: Creative Commons Attribution 3.0 (CC-BY 3.0)
+           https://creativecommons.org/licenses/by/3.0/
+
+Used in this project as the parked motorbike in the garden carport
+(src/components/3d/OutdoorZone.tsx, file: public/models/scooter.glb).

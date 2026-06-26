@@ -14,6 +14,7 @@ export default function KitchenZone() {
   const sizzleRefs = useRef<THREE.Mesh[]>([]);
   const foamRefs = useRef<THREE.Mesh[]>([]);
   const streamRef = useRef<THREE.Mesh>(null);
+  const spongeRef = useRef<THREE.Group>(null);
   const plateMatRefs = useRef<THREE.MeshStandardMaterial[]>([]);
 
   useFrame((state) => {
@@ -64,6 +65,18 @@ export default function KitchenZone() {
     if (streamRef.current) {
       streamRef.current.visible = washing;
       streamRef.current.scale.y = 0.9 + Math.sin(t * 20) * 0.1;
+    }
+    if (spongeRef.current) {
+      spongeRef.current.visible = washing;
+      if (washing) {
+        // scrub the top plate in little circles
+        spongeRef.current.position.set(
+          -0.02 + Math.cos(t * 9) * 0.06,
+          0.075 + Math.abs(Math.sin(t * 9)) * 0.015,
+          0.08 + Math.sin(t * 9) * 0.06
+        );
+        spongeRef.current.rotation.y = t * 2;
+      }
     }
     foamRefs.current.forEach((m, i) => {
       if (!m) return;
@@ -228,6 +241,17 @@ export default function KitchenZone() {
             />
           </mesh>
         ))}
+        {/* scrub sponge (appears while washing up) */}
+        <group ref={spongeRef} position={[-0.02, 0.075, 0.08]} visible={false}>
+          <mesh castShadow>
+            <boxGeometry args={[0.07, 0.03, 0.05]} />
+            <meshStandardMaterial color="#fde047" roughness={0.9} />
+          </mesh>
+          <mesh position={[0, -0.02, 0]}>
+            <boxGeometry args={[0.066, 0.014, 0.046]} />
+            <meshStandardMaterial color="#22c55e" roughness={0.95} />
+          </mesh>
+        </group>
         {/* foam */}
         {Array.from({ length: 10 }).map((_, i) => (
           <mesh key={`f-${i}`} ref={(el) => { if (el) foamRefs.current[i] = el; }}>

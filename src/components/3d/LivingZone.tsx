@@ -12,9 +12,10 @@ export default function LivingZone() {
   const bookMatRef = useRef<THREE.MeshStandardMaterial>(null);
   const pageRef = useRef<THREE.Mesh>(null);
   const sparkRefs = useRef<THREE.Mesh[]>([]);
-  const bowlFillRef = useRef<THREE.Mesh>(null);
   const heartRefs = useRef<THREE.Mesh[]>([]);
   const catRef = useRef<THREE.Group>(null);
+  const handRef = useRef<THREE.Group>(null);
+  const tailRef = useRef<THREE.Mesh>(null);
 
   useFrame((state) => {
     const t = state.clock.getElapsedTime();
@@ -52,20 +53,31 @@ export default function LivingZone() {
       m.scale.setScalar(playing ? (1 - frac) * 0.12 + 0.04 : 0);
     });
 
-    // Cat: feed bowl + hearts + happy wiggle
-    if (bowlFillRef.current) {
-      const s = Math.max(0.001, cat / 100);
-      bowlFillRef.current.scale.set(1, s, 1);
-      bowlFillRef.current.position.y = 0.04 + (s * 0.03 - 0.03) / 2;
-    }
+    // Cat: stroke with the hand + happy wiggle + purr + hearts
+    const petting = interactingId === "cat" && cat < 100;
     if (catRef.current) {
-      catRef.current.rotation.y = -0.3 + Math.sin(t * (cat > 0 ? 4 : 1)) * (cat > 0 ? 0.12 : 0.03);
+      // gentle sway when idle, happy wiggle + tiny purr-bounce while petted
+      catRef.current.rotation.y = -0.3 + Math.sin(t * (petting ? 5 : 1)) * (petting ? 0.14 : 0.03);
+      const purr = petting ? 1 + Math.sin(t * 22) * 0.02 : 1;
+      catRef.current.scale.setScalar(purr);
+    }
+    if (tailRef.current) {
+      // tail flicks happily while being stroked
+      tailRef.current.rotation.z = 0.6 + Math.sin(t * (petting ? 7 : 2)) * (petting ? 0.5 : 0.15);
+    }
+    if (handRef.current) {
+      handRef.current.visible = petting;
+      if (petting) {
+        const s = Math.sin(t * 3) * 0.5 + 0.5; // 0..1 stroke head→tail
+        handRef.current.position.set(0.16 - s * 0.34, 0.34 + Math.sin(t * 6) * 0.015, 0.02);
+        handRef.current.rotation.z = -0.2 + Math.sin(t * 3) * 0.12;
+      }
     }
     heartRefs.current.forEach((m, i) => {
       if (!m) return;
       const frac = (t * 0.6 + i * 0.5) % 1;
       m.position.set(Math.sin(t + i) * 0.15, 0.3 + frac * 0.6, Math.cos(t + i) * 0.1);
-      m.scale.setScalar(cat > 0 ? (1 - frac) * 0.06 : 0);
+      m.scale.setScalar(petting || cat >= 100 ? (1 - frac) * 0.06 : 0);
     });
   });
 
@@ -256,19 +268,55 @@ export default function LivingZone() {
             <coneGeometry args={[0.035, 0.07, 8]} />
             <meshStandardMaterial color="#2a2a2e" />
           </mesh>
-          {/* tail */}
-          <mesh position={[-0.18, 0.02, -0.05]} rotation={[0, 0, 0.6]}>
+          {/* tail (flicks happily while petted) */}
+          <mesh ref={tailRef} position={[-0.18, 0.02, -0.05]} rotation={[0, 0, 0.6]}>
             <cylinderGeometry args={[0.025, 0.02, 0.3, 8]} />
             <meshStandardMaterial color="#3a3a3e" roughness={0.85} />
           </mesh>
+          {/* eyes (content, closed-ish) */}
+          <mesh position={[0.24, 0.12, 0.02]}>
+            <sphereGeometry args={[0.02, 8, 8]} />
+            <meshStandardMaterial color="#101012" roughness={0.4} />
+          </mesh>
+          <mesh position={[0.24, 0.12, 0.1]}>
+            <sphereGeometry args={[0.02, 8, 8]} />
+            <meshStandardMaterial color="#101012" roughness={0.4} />
+          </mesh>
         </group>
-        {/* food bowl */}
+
+        {/* petting hand (appears while you stroke the cat) */}
+        <group ref={handRef} position={[0, 0.34, 0.02]} visible={false}>
+          {/* back of hand */}
+          <mesh castShadow>
+            <boxGeometry args={[0.12, 0.04, 0.15]} />
+            <meshStandardMaterial color="#e8b48f" roughness={0.7} />
+          </mesh>
+          {/* fingers */}
+          {[-0.04, -0.013, 0.013, 0.04].map((x, i) => (
+            <mesh key={i} position={[x, -0.02, -0.1]} rotation={[0.6, 0, 0]} castShadow>
+              <boxGeometry args={[0.022, 0.022, 0.09]} />
+              <meshStandardMaterial color="#e8b48f" roughness={0.7} />
+            </mesh>
+          ))}
+          {/* thumb */}
+          <mesh position={[0.07, -0.01, -0.02]} rotation={[0.3, 0, -0.5]} castShadow>
+            <boxGeometry args={[0.02, 0.02, 0.07]} />
+            <meshStandardMaterial color="#e8b48f" roughness={0.7} />
+          </mesh>
+          {/* wrist */}
+          <mesh position={[0, 0.0, 0.12]} rotation={[0.2, 0, 0]}>
+            <cylinderGeometry args={[0.045, 0.05, 0.12, 12]} />
+            <meshStandardMaterial color="#caa07a" roughness={0.7} />
+          </mesh>
+        </group>
+
+        {/* food bowl (decor) */}
         <group position={[0.5, 0, 0.1]}>
           <mesh position={[0, 0.04, 0]}>
             <cylinderGeometry args={[0.1, 0.08, 0.06, 16]} />
             <meshStandardMaterial color="#0ea5e9" roughness={0.4} metalness={0.3} />
           </mesh>
-          <mesh ref={bowlFillRef} position={[0, 0.04, 0]}>
+          <mesh position={[0, 0.05, 0]}>
             <cylinderGeometry args={[0.08, 0.07, 0.03, 16]} />
             <meshStandardMaterial color="#a16207" roughness={0.9} />
           </mesh>
